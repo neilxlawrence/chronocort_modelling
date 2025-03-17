@@ -1,0 +1,655 @@
+
+clear environment and load packages
+
+```{r, load packages}
+rm(list=ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "steroid_profiles",
+    "testosterone_measurements"))
+
+load_efmody_files_function(
+  previous_file_name="file_7",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "both_markers"))
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_all_patient_spline_fits_both_markers",
+                                   "normative_data"))
+
+load_efmody_files_function(
+  previous_file_name="file_6",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles_with_auc_17OHP",
+                                   "steroid_profiles_with_auc_Androstenedione"
+                                   ))
+```
+
+```{r, create steroid_profiles_one_row_one_visit_nona}
+steroid_profiles_one_row_one_visit <- 
+  subset(steroid_profiles_with_auc_17OHP, 
+         time_of_test_hours_past_first_measurement==0
+         )
+steroid_profiles_one_row_one_visit_nona <- 
+  subset(steroid_profiles_with_auc_17OHP, 
+         time_of_test_hours_past_first_measurement==0 &
+         ARM!="Screen Failure" &
+         !is.na(ln_area_under_curve_17OHP),
+         !is.na(ln_area_under_curve_Androstenedione))
+```
+
+```{r, join testosterone in to make a wide frame with all three markers all_three_markers_wide_efmody}
+all_three_markers_wide_efmody <-
+  left_join (both_markers, testosterone_measurements, 
+             by = join_by("id_AVISITN"=="id_visit", 
+                          "AVISITN"=="AVISITN",
+                          "ATM"=="ATM",
+                          "id"=="id",
+                          "SEX"=="SEX",
+                          "ARM"=="ARM",
+                          "AGE"=="AGE"))
+
+all_three_markers_wide_efmody <- subset(all_three_markers_wide_efmody, ARM!= "Screen failure")
+all_three_markers_wide_efmody_male <- subset(all_three_markers_wide_efmody, SEX=="M")
+all_three_markers_wide_efmody_fema <- subset(all_three_markers_wide_efmody, SEX=="F")
+descr(all_three_markers_wide_efmody$ln_value_nM_Testosterone)
+descr(all_three_markers_wide_efmody$value_ngdL_Testosterone)
+freq(all_three_markers_wide_efmody$ARM)
+```
+
+```{r, create all_markers_wide, and make normative data wide}
+normative_data_17OHP <- subset(normative_data, marker=="normative_17OHP")
+normative_data_17OHP$marker <- NULL
+normative_data_17OHP <- 
+  dplyr::rename(
+    normative_data_17OHP, 
+      c("value_nM_17OHP"="value_nM", 
+        "ln_value_nM_17OHP"="ln_value_nM"))
+
+normative_data_androstenedione <- subset(normative_data, marker=="normative_Androstenedione")
+normative_data_androstenedione$marker <- NULL
+normative_data_androstenedione <- dplyr::rename(normative_data_androstenedione, 
+                                         c("value_nM_Androstenedione"="value_nM",
+                                           "ln_value_nM_Androstenedione"="ln_value_nM"))
+
+normative_data_testosterone <- subset(normative_data, marker=="normative_Testosterone")
+normative_data_testosterone$marker <- NULL
+normative_data_testosterone <- dplyr::rename(normative_data_testosterone, 
+                                         c("value_nM_Testosterone"="value_nM",
+                                           "ln_value_nM_Testosterone"="ln_value_nM"))
+
+normative_data_wide_without_testosterone <- 
+  full_join(normative_data_androstenedione, 
+            normative_data_17OHP,
+            by = join_by(patient, Sex, reading_number))
+
+normative_data_wide <- 
+  full_join(normative_data_wide_without_testosterone, 
+            normative_data_testosterone,
+            by = join_by(patient, Sex, reading_number))
+
+normative_data_wide_fema <-
+  subset(normative_data_wide, Sex=="f")
+normative_data_wide_male <-
+  subset(normative_data_wide, Sex=="m")
+
+normative_data_wide_complete_three_markers <-  
+  na.omit(normative_data_wide)
+normative_data_wide_complete_andro_and_17OHP <-  
+  subset(normative_data_wide, 
+         !is.na(value_nM_17OHP) & 
+         !is.na(value_nM_Androstenedione))
+normative_data_wide_complete_andro_and_testosterone <-  
+  subset(normative_data_wide, 
+         !is.na(value_nM_Testosterone) & 
+         !is.na(value_nM_Androstenedione))
+normative_data_wide_complete_17OHP_and_testosterone <-  
+  subset(normative_data_wide, 
+         !is.na(value_nM_17OHP) & 
+         !is.na(value_nM_Testosterone))
+
+#separate by sexes:
+normative_data_wide_complete_three_markers_male <- 
+  subset(normative_data_wide_complete_three_markers, Sex=="m")
+normative_data_wide_complete_three_markers_fema <- 
+  subset(normative_data_wide_complete_three_markers, Sex=="f")
+
+normative_data_wide_complete_three_markers_male_after_Androstenedione_changepoint <-
+  subset(normative_data_wide_complete_three_markers_male, ln_value_nM_Androstenedione > 0.41)
+normative_data_wide_complete_three_markers_fema_after_Androstenedione_changepoint <-
+  subset(normative_data_wide_complete_three_markers_fema, ln_value_nM_Androstenedione > 0.41)
+```
+
+```{r, testosterone on 17ohp}
+
+model <- lm(data=all_three_markers_wide_efmody_male, 
+           formula=ln_value_nM_Testosterone~ln_value_nM_17OHP)
+print("Number of readings that go into this model:")
+length(predict(model))
+print("Model output:")
+summary(model)
+```
+
+look at the loess fit of individual markers:
+
+```{r, marker regression with loess fit ln 17OHP on ln testosterone}
+simple_regression_of_ln_17OHP_on_ln_testosterone <-
+  ggplot(data=all_three_markers_wide_efmody, 
+             aes(x=ln_value_nM_Testosterone, 
+                 y=ln_value_nM_17OHP)) +
+  #plot our spline fit against each other
+  geom_point(alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=SEX)) +
+  geom_point(normative_data_wide,
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             mapping=aes(colour=Sex)) +
+  geom_smooth(data=normative_data_wide,
+              aes(colour=Sex), 
+              se=F, 
+              alpha=0.5) +
+#  geom_smooth(colour="black") +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              aes(colour=SEX), 
+              se=F, 
+              alpha=0.5) +
+  geom_smooth(method="gam", linetype="solid",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values = c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Ln transformed Testosterone (ln (nmol/l))",
+       y="Ln transformed 17OHP (ln (nmol/l))") +
+  themepowerpointlegend
+simple_regression_of_ln_17OHP_on_ln_testosterone
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_ln_17OHP_on_ln_testosterone.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_ln_17OHP_on_ln_testosterone, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, marker regression with loess fit 17OHP on testosterone}
+simple_regression_of_17OHP_on_testosterone <-
+  ggplot(data=all_three_markers_wide_efmody, 
+             aes(x=value_nM_Testosterone, 
+                 y=value_nM_17OHP)) +
+  #plot our spline fit against each other
+  geom_point(alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=SEX)) +
+  geom_point(normative_data_wide,
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             mapping=aes(colour=Sex)) +
+  geom_smooth(data=normative_data_wide,
+              aes(colour=Sex), 
+              se=F, 
+              alpha=0.5) +
+#  geom_smooth(colour="black") +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              aes(colour=SEX), 
+              se=F, 
+              alpha=0.5) +
+  geom_smooth(method="gam", linetype="solid",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values = c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Testosterone ((nmol/l))",
+       y="17OHP ((nmol/l))") +
+  themepowerpointlegend
+simple_regression_of_17OHP_on_testosterone
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_17OHP_on_testosterone.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_17OHP_on_testosterone, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, marker regression with loess fit ln Androstenedione on ln testosterone}
+simple_regression_of_androstenedione_on_testosterone <-
+  ggplot(data=all_three_markers_wide_efmody, 
+             aes(x=ln_value_nM_Testosterone, 
+                 y=ln_value_nM_Androstenedione)) +
+  #plot our spline fit against each other
+  geom_point(alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=SEX)) +
+  geom_point(normative_data_wide,
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             mapping=aes(colour=Sex)) +
+  geom_smooth(data=normative_data_wide,
+              aes(colour=Sex), 
+              se=F, 
+              alpha=0.5) +
+#  geom_smooth(colour="black") +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              aes(colour=SEX), 
+              se=F, 
+              alpha=0.5) +
+  geom_smooth(method="gam", linetype="solid",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values = c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Ln transformed Testosterone (ln (nmol/l))",
+       y="Ln transformed Androstenedione (ln (nmol/l))") +
+  themepowerpointlegend
+simple_regression_of_androstenedione_on_testosterone
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_androstenedione_on_testosterone.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_androstenedione_on_testosterone, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, marker regression with loess fit ln 17OHP on ln androstenedione}
+simple_regression_of_17OHP_on_androstenedione <-
+  ggplot(data=all_three_markers_wide_efmody, 
+             aes(x=ln_value_nM_Androstenedione, 
+                 y=ln_value_nM_17OHP)) +
+  #plot our spline fit against each other
+  geom_point(alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=SEX)) +
+  geom_point(normative_data_wide,
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             mapping=aes(colour=Sex)) +
+  geom_smooth(data=normative_data_wide,
+              aes(colour=Sex), 
+              se=F, 
+              alpha=0.5) +
+#  geom_smooth(colour="black") +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              aes(colour=SEX), 
+              se=F, 
+              alpha=0.5) +
+  geom_smooth(method="gam", linetype="solid",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values = c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Ln transformed Androstenedione (ln (nmol/l))",
+       y="Ln transformed 17OHP (ln (nmol/l))") +
+  themepowerpointlegend
+simple_regression_of_17OHP_on_androstenedione
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_17OHP_on_androstenedione.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_17OHP_on_androstenedione, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, marker regression with loess fit ln testosterone on ln 17OHP}
+simple_regression_of_testosterone_on_17OHP <-
+  ggplot(data=all_three_markers_wide_efmody, 
+             aes(x=ln_value_nM_17OHP, 
+                 y=ln_value_nM_Testosterone)) +
+  #plot our spline fit against each other
+  geom_point(alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=SEX)) +
+  geom_point(normative_data_wide,
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             mapping=aes(colour=Sex)) +
+  geom_smooth(data=normative_data_wide,
+              aes(colour=Sex), 
+              se=F, 
+              alpha=0.5) +
+#  geom_smooth(colour="black") +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              aes(colour=SEX), 
+              se=F, 
+              alpha=0.5) +
+  geom_smooth(method="gam", linetype="solid",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values = c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Ln transformed 17OHP (ln (nmol/l))",
+       y="Ln transformed Testosterone  (ln (nmol/l))") +
+  themepowerpointlegend
+simple_regression_of_testosterone_on_17OHP
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_simple_regression_of_testosterone_on_17OHP.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_testosterone_on_17OHP, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, marker regression with loess fit ln Androstenedione on ln testosterone}
+
+simple_regression_of_testosterone_on_androstenedione <-
+  ggplot(data=all_three_markers_wide_efmody, 
+             aes(x=ln_value_nM_Androstenedione, 
+                 y=ln_value_nM_Testosterone)) +
+  #plot our spline fit against each other
+  geom_point(alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=SEX)) +
+  geom_point(normative_data_wide,
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             mapping=aes(colour=Sex)) +
+  geom_smooth(data=normative_data_wide,
+              aes(colour=Sex), 
+              se=F, 
+              alpha=0.5) +
+#  geom_smooth(colour="black") +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              aes(colour=SEX), 
+              se=F, 
+              alpha=0.5) +
+  geom_smooth(method="gam", linetype="solid",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values = c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Ln transformed Androstenedione (ln (nmol/l))",
+       y="Ln transformed Testosterone (ln (nmol/l))") +
+  themepowerpointlegend
+simple_regression_of_testosterone_on_androstenedione
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_testosterone_on_androstenedione.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_testosterone_on_androstenedione, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+```{r, marker regression ln testosterone on ln androstenedione just females}
+
+simple_regression_of_androstenedione_on_testosterone_fema <-
+  ggplot(data=all_three_markers_wide_efmody_fema, 
+             aes(x=ln_value_nM_Androstenedione, 
+                 y=ln_value_nM_Testosterone)) +
+  #plot our spline fit against each other
+  geom_point(data=normative_data_wide_fema,
+             alpha=0.8,
+             shape=3,
+             size=2,
+             stroke=2,
+             colour="darkgreen") +
+  geom_point(alpha=0.8,
+             shape=1,
+             size=2,
+             stroke=2,
+             colour="tomato") +
+  geom_smooth(data=normative_data_wide_fema,
+              method="lm", 
+              linetype="dashed",
+              colour="darkgreen", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              colour="tomato", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  labs(x="Ln transformed Androstenedione (ln (nmol/l))",
+       y="Ln transformed Testosterone (ln (nmol/l))") +
+  coord_cartesian(xlim=c(-2.5,3),
+                  ylim=c(-2.5,2)) +
+  themepowerpoint
+simple_regression_of_androstenedione_on_testosterone_fema
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_ln_androstenedione_on_ln_testosterone_fema.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_androstenedione_on_testosterone_fema, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+```{r, marker regression ln testosterone on ln 17OHP just females}
+
+simple_regression_of_17OHP_on_testosterone_fema <-
+  ggplot(data=all_three_markers_wide_efmody_fema, 
+             aes(x=ln_value_nM_17OHP, 
+                 y=ln_value_nM_Testosterone)) +
+  #plot our spline fit against each other
+  geom_point(data=normative_data_wide_fema,
+             alpha=0.8,
+             shape=3,
+             size=2,
+             stroke=2,
+             colour="darkgreen") +
+  geom_point(alpha=0.8,
+             shape=1,
+             size=2,
+             stroke=2,
+             colour="tomato") +
+  geom_smooth(data=normative_data_wide_fema,
+              method="lm", 
+              linetype="dashed",
+              colour="darkgreen", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              colour="tomato", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  labs(x="Ln transformed 17OHP (ln (nmol/l))",
+       y="Ln transformed Testosterone (ln (nmol/l))") +
+  coord_cartesian(xlim=c(-2.5,7),
+                  ylim=c(-2.5,2)) +
+  themepowerpoint
+simple_regression_of_17OHP_on_testosterone_fema
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_ln_17OHP_on_ln_testosterone_fema.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_17OHP_on_testosterone_fema, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+
+```{r, marker regression ln testosterone on ln androstenedione just males}
+
+simple_regression_of_androstenedione_on_testosterone_male <-
+  ggplot(data=all_three_markers_wide_efmody_male, 
+             aes(x=ln_value_nM_Androstenedione, 
+                 y=ln_value_nM_Testosterone)) +
+  #plot our spline fit against each other
+  geom_point(data=normative_data_wide_male,
+             alpha=0.8,
+             shape=3,
+             size=2,
+             stroke=2,
+             colour="darkgreen") +
+  geom_point(alpha=0.8,
+             shape=4,
+             size=2,
+             stroke=2,
+             colour="blue") +
+  geom_smooth(data=normative_data_wide_male,
+              method="lm", 
+              linetype="dashed",
+              colour="darkgreen", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              colour="blue", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  labs(x="Ln transformed Androstenedione (ln (nmol/l))",
+       y="Ln transformed Testosterone (ln (nmol/l))") +
+  coord_cartesian(xlim=c(-1,4),
+                  ylim=c(0,4)) +
+  themepowerpoint
+simple_regression_of_androstenedione_on_testosterone_male
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_ln_androstenedione_on_ln_testosterone_male.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_androstenedione_on_testosterone_male, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+```{r, marker regression ln testosterone on ln 17OHP just males}
+
+simple_regression_of_17OHP_on_testosterone_male <-
+  ggplot(data=all_three_markers_wide_efmody_male, 
+             aes(x=ln_value_nM_17OHP, 
+                 y=ln_value_nM_Testosterone)) +
+  #plot our spline fit against each other
+  geom_point(data=normative_data_wide_male,
+             alpha=0.8,
+             shape=3,
+             size=2,
+             stroke=2,
+             colour="darkgreen") +
+  geom_point(alpha=0.8,
+             shape=4,
+             size=2,
+             stroke=2,
+             colour="blue") +
+  geom_smooth(data=normative_data_wide_male,
+              method="lm", 
+              linetype="dashed",
+              colour="darkgreen", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  geom_smooth(method="lm", 
+              linetype="dashed",
+              colour="blue", 
+              se=F, 
+              alpha=0.5,
+              linewidth=2) +
+  labs(x="Ln transformed 17OHP (ln (nmol/l))",
+       y="Ln transformed Testosterone (ln (nmol/l))") +
+  coord_cartesian(xlim=c(-2.5,7.5),
+                  ylim=c(0,4)) +
+  themepowerpoint
+simple_regression_of_17OHP_on_testosterone_male
+dir.create("simple_regression_plots")
+ggsave(filename=paste("plot_ln_17OHP_on_ln_testosterone_male.tif"), 
+       path="./simple_regression_plots/", 
+       plot = simple_regression_of_17OHP_on_testosterone_male, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+
+```{r}
+dir.create("simple_linear_model_results")
+sink("simple_linear_model_results/Regression_statistics_testosterone_on_other_markers.txt")
+print("Patients:")
+model <- (lm(data=all_three_markers_wide_efmody_fema,
+   formula=ln_value_nM_Testosterone~ln_value_nM_17OHP))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(all_three_markers_wide_efmody_fema$id))
+summary(model)
+
+model <- (lm(data=all_three_markers_wide_efmody_fema,
+   formula=ln_value_nM_Testosterone~ln_value_nM_Androstenedione))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(all_three_markers_wide_efmody_fema$id))
+summary(model)
+
+model <- (lm(data=all_three_markers_wide_efmody_male,
+   formula=ln_value_nM_Testosterone~ln_value_nM_17OHP))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(all_three_markers_wide_efmody_male$id))
+summary(model)
+
+model <- (lm(data=all_three_markers_wide_efmody_male,
+   formula=ln_value_nM_Testosterone~ln_value_nM_Androstenedione))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(all_three_markers_wide_efmody_male$id))
+summary(model)
+
+print("Healthy participants:")
+model <- (lm(data=normative_data_wide_fema,
+   formula=ln_value_nM_Testosterone~ln_value_nM_17OHP))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(normative_data_wide_fema$patient))
+summary(model)
+model <- (lm(data=normative_data_wide_fema,
+   formula=ln_value_nM_Testosterone~ln_value_nM_Androstenedione))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(normative_data_wide_fema$patient))
+summary(model)
+model <- (lm(data=normative_data_wide_male,
+   formula=ln_value_nM_Testosterone~ln_value_nM_17OHP))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(normative_data_wide_male$patient))
+summary(model)
+model <- (lm(data=normative_data_wide_male,
+   formula=ln_value_nM_Testosterone~ln_value_nM_Androstenedione))
+("Number of readings in this model:")
+length(predict(model))
+("Number of patients in this model:")
+length(unique(normative_data_wide_male$patient))
+summary(model)
+sink()
+
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+steroid_profiles <- NULL
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_17")
+```

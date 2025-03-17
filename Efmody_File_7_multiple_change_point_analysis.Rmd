@@ -1,0 +1,681 @@
+clear environment and load packages
+
+```{r, load packages}
+rm(list=ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "steroid_profiles"))
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_all_patient_spline_fits_both_markers",
+                                   "normative_data"))
+
+load_efmody_files_function(
+  previous_file_name="file_6",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles_with_auc_17OHP",
+                                   "steroid_profiles_with_auc_Androstenedione"
+                                   ))
+
+
+```
+
+```{r, reshape raw values to be in a wide frame to model against each other}
+markers_17OHP <-
+  subset(steroid_profiles, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)")
+markers_Androstenedione <-
+  subset(steroid_profiles, PARAM=="Androstenedione/ SI (nmol/L)")
+
+#take out the only necessary columns
+markers_17OHP <-
+  markers_17OHP [,c("id",
+                    "SEX",
+                    "ARM",
+                    "AGE",
+                    "SYSBP1",
+                    "SYSBP2",
+                    "DIABP1",
+                    "DIABP2",
+                    "BMIDER",
+                    "WEIGHT",
+                    "HEIGHT",
+                    "AVISITN",
+                    "ATM",
+                    "ATPTN",
+                    "time_of_test_hours_past_first_measurement",
+                    "preparation_at_visit",
+                    "AVAL",
+                    "ln_value_nM")]
+names(markers_17OHP)[names(markers_17OHP)=="AVAL"] <- 
+  "value_nM_17OHP"
+names(markers_17OHP)[names(markers_17OHP)=="ln_value_nM"] <- 
+  "ln_value_nM_17OHP"
+
+markers_Androstenedione <-
+  markers_Androstenedione [,c("id",
+                    "AVISITN",
+                    "ATPTN",
+                    "AVAL",
+                    "ln_value_nM")]
+names(markers_Androstenedione)[names(markers_Androstenedione)=="AVAL"] <- 
+  "value_nM_Androstenedione"
+names(markers_Androstenedione)[names(markers_Androstenedione)=="ln_value_nM"] <- 
+  "ln_value_nM_Androstenedione"
+
+both_markers <-
+  left_join(markers_17OHP, 
+            markers_Androstenedione, 
+            by = c("id",
+                   "AVISITN", 
+                   "ATPTN")
+            )
+#create id visit number multiplied to allow plotting of separate random effects later on 
+both_markers$id_AVISITN <- paste0(
+  both_markers$id, "_", both_markers$AVISITN
+) 
+
+#take out the screen failure patients
+both_markers <- subset(both_markers, 
+                     ARM!="Screen Failure" 
+                     )
+```
+
+```{r, create all_markers_wide, and ln_value_nMs in normative data and make it wide}
+#screen failure should now have been removed in file 4 - check this line is necessary and delete if you can
+all_markers_wide <- subset(both_markers, ARM!="Screen failure" )
+
+all_markers_wide_male <- subset(all_markers_wide, SEX=="M")
+
+all_markers_wide_fema <- subset(all_markers_wide, SEX=="F")
+
+normative_data$ln_value_nM <- 
+  log(normative_data$value_nM)
+
+normative_data_17OHP <- 
+  subset(normative_data, marker=="normative_17OHP")
+
+normative_data_17OHP$marker <- NULL
+
+normative_data_17OHP <- 
+  dplyr::rename(normative_data_17OHP, 
+         c("value_nM_17OHP"="value_nM", 
+           "ln_value_nM_17OHP"="ln_value_nM"))
+
+normative_data_androstenedione <- subset(normative_data, marker=="normative_Androstenedione")
+
+normative_data_androstenedione$marker <- NULL
+
+normative_data_androstenedione <- 
+  dplyr::rename(normative_data_androstenedione, 
+         c("value_nM_Androstenedione"="value_nM",
+         "ln_value_nM_Androstenedione"="ln_value_nM"))
+
+normative_data_wide <- 
+  full_join(normative_data_androstenedione, 
+            normative_data_17OHP,
+            by = join_by(patient, Sex, reading_number))
+
+#remember we haven't got one 17OHP profiles so we have to remove NA
+normative_data_wide_nona <-  
+  na.omit(normative_data_wide)
+
+normative_data_wide_male <-
+  subset(normative_data_wide, Sex=="m")
+
+normative_data_wide_fema <-
+  subset(normative_data_wide, Sex=="f")
+```
+
+```{r, recreate steroid_profiles_one_row_one_visit_nona}
+steroid_profiles_one_row_one_visit <- 
+  subset(steroid_profiles_with_auc_17OHP, 
+         time_of_test_hours_past_first_measurement==0
+         )
+steroid_profiles_one_row_one_visit_nona <- 
+  subset(steroid_profiles_with_auc_17OHP, 
+         time_of_test_hours_past_first_measurement==0 &
+         ARM!="Screen Failure" &
+         !is.na(ln_area_under_curve_17OHP),
+         !is.na(ln_area_under_curve_Androstenedione))
+```
+
+```{r, marker regression with loess fit for markers and AUC}
+simple_regression_of_markers <-
+  ggplot(data=subset(all_markers_wide), 
+             aes(x=ln_value_nM_Androstenedione, 
+                 y=ln_value_nM_17OHP)) +
+  geom_point(
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+                 aes(colour=SEX)) +
+  geom_point(data=subset(normative_data_wide),
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+             aes(colour=Sex)) +
+  geom_smooth(method="lm", linetype="dashed", data=subset(normative_data_wide),
+              aes(colour=Sex), se=F, alpha=0.5) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=SEX), se=F, alpha=0.5) +
+  scale_colour_manual(values=c("M"= "blue", "F"= "red", "m"="darkgreen", "f"="green")) + 
+  labs(x="Ln transformed androstenedione (ln (nmol/l))",
+       y="Ln transformed 17OHP (ln (nmol/l))") +
+  coord_cartesian(xlim=c(-2.5,6), ylim=c(-2.5,6)) +
+  themepowerpointlegend
+
+simple_regression_of_markers
+dir.create("multiple_change_point_plots")
+ggsave(filename=paste("simple_regression_of_markers.tif"), 
+       path="./multiple_change_point_plots/", 
+       plot = simple_regression_of_markers, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+simple_regression_of_auc <-
+  ggplot(data=steroid_profiles_one_row_one_visit_nona, 
+             aes(x=ln_area_under_curve_Androstenedione, 
+                 y=ln_area_under_curve_17OHP)) +
+  geom_point(
+             alpha=0.5,
+             shape="circle",
+             size=0.1,
+                 aes(colour=SEX)) +
+  geom_smooth(aes(colour=SEX), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=SEX), se=F) +
+  themepowerpointlegend
+simple_regression_of_auc
+#extract preparations
+freq(steroid_profiles_one_row_one_visit_nona$preparation_at_visit)
+auc_data_chronocort <- 
+  subset(steroid_profiles_one_row_one_visit_nona, preparation_at_visit=="Chronocort")
+auc_data_hydrocortisone <- 
+  subset(steroid_profiles_one_row_one_visit_nona, preparation_at_visit=="Hydrocortisone")
+auc_data_prednisolone <- subset(steroid_profiles_one_row_one_visit_nona, preparation_at_visit=="Prednisolone")
+  
+#extract male and female auc
+male_auc_data <- subset(steroid_profiles_one_row_one_visit_nona, 
+                      SEX=="M")
+fema_auc_data <- subset(steroid_profiles_one_row_one_visit_nona, 
+                      SEX=="F")
+
+data_chronocort <- subset(all_markers_wide, 
+                      preparation_at_visit=="Chronocort")
+data_hydrocortisone <- subset(all_markers_wide, 
+                      preparation_at_visit=="Hydrocortisone")
+data_prednisolone <- subset(all_markers_wide, 
+                      preparation_at_visit=="Prednisolone")
+
+male_data <- subset(all_markers_wide, 
+                      SEX=="M")
+fema_data <- subset(all_markers_wide, 
+                      SEX=="F")
+
+both_data_list <- list(male = subset(all_markers_wide, 
+                      SEX=="M"),
+                 fema = subset(all_markers_wide, 
+                      SEX=="F")
+)
+sink("results of simple correlation between markers.txt")
+print("results of simple correlation between markers")
+
+#run simple pearson correlations
+cor.test(all_markers_wide$ln_value_nM_Androstenedione, all_markers_wide$ln_value_nM_17OHP, method = "pearson")
+cor.test(male_data$ln_value_nM_Androstenedione, male_data$ln_value_nM_17OHP, method = "pearson")
+cor.test(fema_data$ln_value_nM_Androstenedione, fema_data$ln_value_nM_17OHP, method = "pearson")
+
+#compare correlations with cocor
+cocor(formula = ~ln_value_nM_Androstenedione + ln_value_nM_17OHP | ln_value_nM_Androstenedione + ln_value_nM_17OHP, 
+      data = both_data_list)
+sink()
+
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP both sexes}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_both_sexes_dependent_17OHP <-
+  mcp::mcp (hockey_stick , data = subset(all_markers_wide))
+dir.create("mcp_save_files")
+save(hockey_stick_mcp_fit_both_sexes_dependent_17OHP,
+     file="mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP.Rdata", 
+       envir = .GlobalEnv)
+
+#the we put all of our important paramters from that model into one frame
+#add rows to a frame of the results from the mcp
+mcp_results <- summary(hockey_stick_mcp_fit_both_sexes_dependent_17OHP)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_both_sexes_dependent_17OHP"
+
+mcp_results_both_sexes_dependent_17OHP <- mcp_results
+dir.create("multiple_change_point_statistical_outputs")
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_both_sexes_dependent_17OHP.csv", x=mcp_results)
+
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP male}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_male_dependent_17OHP <-
+  mcp::mcp (hockey_stick , data = subset(male_data))
+save(hockey_stick_mcp_fit_male_dependent_17OHP,
+     file="mcp_save_files/hockey_stick_mcp_fit_male_dependent_17OHP.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_male_dependent_17OHP.Rdata", 
+       envir = .GlobalEnv)
+
+#the we put all of our important paramters from that model into one frame
+#add rows to a frame of the results from the mcp
+mcp_results <- summary(hockey_stick_mcp_fit_male_dependent_17OHP)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+
+mcp_results$file <- "mcp_results_male_dependent_17OHP"
+mcp_results_male_dependent_17OHP <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_male_dependent_17OHP.csv", x=mcp_results)
+
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP fema}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_fema_dependent_17OHP <-
+  mcp::mcp (hockey_stick , data = subset(fema_data))
+save(hockey_stick_mcp_fit_fema_dependent_17OHP,
+     file="mcp_save_files/hockey_stick_mcp_fit_fema_dependent_17OHP.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_fema_dependent_17OHP.Rdata", 
+       envir = .GlobalEnv)
+
+mcp_results <- summary(hockey_stick_mcp_fit_fema_dependent_17OHP)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_fema_dependent_17OHP"
+mcp_results_fema_dependent_17OHP <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_fema_dependent_17OHP.csv", x=mcp_results)
+
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP both sexes just chronocort}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_chronocort <-
+  mcp::mcp (hockey_stick , data = subset(data_chronocort))
+save(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_chronocort,
+     file="mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_chronocort.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_chronocort.Rdata", 
+       envir = .GlobalEnv)
+
+mcp_results <- summary(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_chronocort)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_both_sexes_dependent_17OHP_just_chronocort"
+mcp_results_both_sexes_dependent_17OHP_just_chronocort <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_both_sexes_dependent_17OHP_just_chronocort.csv", x=mcp_results)
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP both sexes just hydrocortisone}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_hydrocortisone <-
+  mcp::mcp (hockey_stick , data = subset(data_hydrocortisone))
+save(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_hydrocortisone,
+     file="mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_hydrocortisone.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_hydrocortisone.Rdata", 
+       envir = .GlobalEnv)
+
+mcp_results <- summary(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_hydrocortisone)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_both_sexes_dependent_17OHP_just_hydrocortisone"
+mcp_results_both_sexes_dependent_17OHP_just_hydrocortisone <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_both_sexes_dependent_17OHP_just_hydrocortisone.csv", x=mcp_results)
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP both sexes just prednisolone}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_prednisolone <-
+  mcp::mcp (hockey_stick , data = subset(data_prednisolone))
+save(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_prednisolone,
+     file="mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_prednisolone.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_prednisolone.Rdata", 
+       envir = .GlobalEnv)
+
+mcp_results <- summary(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_just_prednisolone)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_both_sexes_dependent_17OHP_just_prednisolone"
+mcp_results_both_sexes_dependent_17OHP_just_prednisolone <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_both_sexes_dependent_17OHP_just_prednisolone.csv", x=mcp_results)
+```
+
+```{r, bayesian multiple change points on ln value_nMs dependent 17OHP both sexes from flat}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat <-
+  mcp::mcp (hockey_stick , data = subset(all_markers_wide))
+save(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat,
+     file="mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat.Rdata", 
+       envir = .GlobalEnv)
+
+mcp_results <- summary(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_both_sexes_dependent_17OHP_from_flat"
+mcp_results_both_sexes_dependent_17OHP_from_flat <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_both_sexes_dependent_17OHP_from_flat.csv", x=mcp_results)
+```
+
+```{r, bayesian multiple change points on ln value_nMs with two changepoints - rhat shows their aren't two changepoints}
+double_hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione ,
+  1 ~ 0 + ln_value_nM_Androstenedione 
+)
+double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP <-
+  mcp::mcp (double_hockey_stick , data = subset(all_markers_wide))
+save(double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP,
+     file="mcp_save_files/double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP.Rdata", 
+       envir = .GlobalEnv)
+
+dir.create("multiple_change_point_statistical_outputs")
+write.csv(x=summary(double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP),
+          file = "multiple_change_point_statistical_outputs/double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP.csv")
+
+dir.create("multiple_change_point_plots")
+ggsave(filename=paste("double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP.tif"), 
+       path="./multiple_change_point_plots/", 
+       plot = plot(double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP) + themepowerpoint, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+```
+
+
+
+
+```{r, bayesian multiple change points on ln values dependent 17OHP independent androstenedione normative data both sexes}
+hockey_stick <- list(
+  ln_value_nM_17OHP ~ 1 + ln_value_nM_Androstenedione,
+  1 ~ 0 + ln_value_nM_Androstenedione
+)
+
+mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data <-
+  mcp::mcp (hockey_stick , data = subset(normative_data_wide_nona))
+save(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data,
+     file="mcp_save_files/mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data.Rdata",
+     compress=F)
+#load the previously run files instead
+load("mcp_save_files/mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data.Rdata", 
+       envir = .GlobalEnv)
+
+
+
+#add rows to a frame of the results from the mcp
+mcp_results <- summary(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data)
+
+names(mcp_results)[names(mcp_results)=="Rhat"] <- "Rhat_or_p"
+
+mcp_results$file <- "mcp_results_both_sexes_dependent_17OHP_independent_androstenedione"
+mcp_results_both_sexes_dependent_17OHP_independent_androstenedione <- mcp_results
+write.csv(row.names = F, file="multiple_change_point_statistical_outputs/mcp_results_both_sexes_normative_data_dependent_17OHP_independent_androstenedione.csv", x=mcp_results)
+
+print("calculated change point for 17OHP in healthy patients")
+#slope 1 x change point + intercept
+0.3812191 * 1.1210807 + 0.3953154
+print("then take exponent:")
+exp(0.3812191 * 1.1210807 + 0.3953154)
+
+print("back convert the intercept itself:")
+exp(0.3953154)
+print("versus intercept in CAH patients")
+exp(1.19)
+```
+
+
+
+
+
+```{r, grid plot of changepoint plots}
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat.Rdata", 
+       envir = .GlobalEnv)
+load("mcp_save_files/hockey_stick_mcp_fit_both_sexes_dependent_17OHP.Rdata", 
+       envir = .GlobalEnv)
+load("mcp_save_files/double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP.Rdata", 
+       envir = .GlobalEnv)
+load("mcp_save_files/mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data.Rdata", 
+       envir = .GlobalEnv)
+
+mcp_grid_of_plots <- 
+  grid.arrange(
+    plot(hockey_stick_mcp_fit_both_sexes_dependent_17OHP_from_flat) + themepowerpoint,
+    plot(hockey_stick_mcp_fit_both_sexes_dependent_17OHP) + themepowerpoint,
+    plot(double_hockey_stick_mcp_fit_both_sexes_dependent_17OHP) + themepowerpoint,
+    plot(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data) + themepowerpoint,
+    ncol=2)
+
+dir.create("multiple_change_point_plots")
+ggsave(filename=paste("mcp_grid_of_plots.tif"), 
+       path="./multiple_change_point_plots/", 
+       plot = mcp_grid_of_plots, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, creating individualised changepoint plot in ggplot2}
+library(gginnards)
+summary(changepoint_plot_both_sexes_dependent_17OHP)
+print(changepoint_plot_both_sexes_dependent_17OHP$layers)
+which_layers(changepoint_plot_both_sexes_dependent_17OHP, "GeomPoint")
+extract_layers(changepoint_plot_both_sexes_dependent_17OHP, "GeomPoint")
+extract_layers(changepoint_plot_both_sexes_dependent_17OHP, "GeomLine")
+move_layers(changepoint_plot_both_sexes_dependent_17OHP, "GeomLine", position="top")
+
+my_changepoint_plot_both_sexes_dependent_17OHP <-
+  delete_layers(changepoint_plot_both_sexes_dependent_17OHP, "GeomPoint") +
+  geom_point(
+    data=all_markers_wide_male,
+    aes(x=ln_value_nM_Androstenedione,
+        y=ln_value_nM_17OHP),
+             alpha=0.2,
+             size=1,
+             stroke=2,
+             shape=4,
+             colour="blue4") +
+  geom_point(
+    data=all_markers_wide_fema,
+    aes(x=ln_value_nM_Androstenedione,
+        y=ln_value_nM_17OHP),
+             alpha=0.2,
+             size=1,
+             shape=1,
+             stroke=2,
+             colour="tomato") +
+  extract_layers(changepoint_plot_both_sexes_dependent_17OHP, "GeomLine") +
+  labs(x="ln Androstenedione (ln (nmol/l))",
+       y="ln 17OHP (ln (nmol/l))") +
+  themepowerpoint
+my_changepoint_plot_both_sexes_dependent_17OHP
+
+dir.create("multiple_change_point_plots")
+ggsave(filename=paste("my_changepoint_plot_both_sexes_dependent_17OHP.tif"), 
+       path="./multiple_change_point_plots/", 
+       plot = my_changepoint_plot_both_sexes_dependent_17OHP, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, extract the lines from the CAH changepoint mcp plot}
+cah_patient_changepoint_plot_data <-
+  ggplot_build(changepoint_plot_both_sexes_dependent_17OHP)$data
+
+cah_patient_changepoint_point_data <- cah_patient_changepoint_plot_data[[1]]
+
+cah_patient_changepoint_line_data <- cah_patient_changepoint_plot_data[[2]]
+
+```
+
+```{r, load a previous mcp fit with normative data just to extract the lines from the plots}
+
+load("mcp_save_files/mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data.Rdata", 
+       envir = .GlobalEnv)
+mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data <-
+  plot(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data)
+
+normative_changepoint_plot_data <-
+  ggplot_build(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data)$data
+
+normative_changepoint_point_data <- normative_changepoint_plot_data[[1]]
+
+normative_changepoint_line_data <- normative_changepoint_plot_data[[2]]
+
+print("so how many data points went into this change point model of both_sexes healthy patient normative data?")
+print("This number should be zero to show we have pairs of both markers:")
+nrow(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data$data) * 2 - 
+length(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data$data$ln_value_17OHP) -
+length(mcp_fit_both_sexes_dependent_17OHP_independent_androstenedione_normative_data$data$ln_value_Androstenedione)
+```
+
+
+
+```{r, custom change point plot with normative data}
+
+regression_of_markers_with_changepoint <-
+  ggplot() +
+  geom_point(
+    data=all_markers_wide_male,
+    aes(x=ln_value_nM_Androstenedione,
+        y=ln_value_nM_17OHP),
+             alpha=0.2,
+             size=1,
+             stroke=2,
+             shape=4,
+             colour="blue4") +
+  geom_point(
+    data=all_markers_wide_fema,
+    aes(x=ln_value_nM_Androstenedione,
+        y=ln_value_nM_17OHP),
+             alpha=0.2,
+             size=1,
+             shape=1,
+             stroke=2,
+             colour="tomato") +
+  geom_point(
+    data=normative_data_wide_male,
+    aes(x=ln_value_nM_Androstenedione,
+        y=ln_value_nM_17OHP),
+             alpha=0.2,
+             size=1,
+             shape=4,
+             stroke=2,
+             colour="darkgreen") +
+  geom_point(
+    data=normative_data_wide_fema,
+    aes(x=ln_value_nM_Androstenedione,
+        y=ln_value_nM_17OHP),
+             alpha=0.2,
+             size=1,
+             shape=1,
+             stroke=2,
+             colour="chartreuse3") +
+  geom_line(data=cah_patient_changepoint_line_data, 
+            aes(x=x, 
+                y=y, 
+                group=group), 
+            colour="azure4",
+            alpha=0.5) + 
+  geom_line(data=normative_changepoint_line_data, 
+            aes(x=x, 
+                y=y, 
+                group=group), 
+            colour="darkgreen",
+            alpha=0.4) +
+  labs(x="ln Androstenedione (ln (nmol/l))",
+       y="ln 17OHP (ln (nmol/l))") +
+  themepowerpoint +
+  theme(plot.title = element_blank(),
+        plot.subtitle = element_blank(),
+        axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        )
+
+
+regression_of_markers_with_changepoint
+
+dir.create("multiple_change_point_plots")
+ggsave(filename=paste("regression_of_markers_with_changepoint.tif"), 
+       path="./multiple_change_point_plots/", 
+       plot = regression_of_markers_with_changepoint, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+rm(steroid_profiles)
+rm(steroid_profiles_with_auc_17OHP)
+rm(steroid_profiles_with_auc_Androstenedione)
+rm(normative_data)
+rm(normative_all_patient_spline_fits_both_markers)
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_7")
+```
+
+
+
+

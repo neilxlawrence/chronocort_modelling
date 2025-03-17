@@ -1,0 +1,1345 @@
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles"))
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("all_patient_spline_fits_both_markers"))
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_all_patient_spline_fits_both_markers", #this file has auc of normative data for different degrees of freedom
+                                   "normative_data",
+                                   "normative_data_17OHP",
+                                   "normative_data_Androstenedione"))
+```
+
+```{r, join the area into each frame}
+#just do it for 10 degrees of freedom
+all_patient_spline_fits_both_markers_df_10 <- 
+  subset(all_patient_spline_fits_both_markers, degrees_of_freedom==10)
+
+steroid_profiles_with_auc <-
+  left_join(steroid_profiles,
+            all_patient_spline_fits_both_markers_df_10,
+            by = c("id"="id",
+                   "AVISITN"="visit_number",
+                   "days_beyond_baseline_visit"="days_beyond_baseline_visit"))
+
+#make a factor reading_number
+steroid_profiles_with_auc$reading_number <-
+  as.factor(steroid_profiles_with_auc$ATPTN)
+steroid_profiles_with_auc_17OHP <- 
+  subset(steroid_profiles_with_auc, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)")
+steroid_profiles_with_auc_Androstenedione <- 
+  subset(steroid_profiles_with_auc, PARAM=="Androstenedione/ SI (nmol/L)")
+```
+
+```{r, create ARM_preparation_at_visit column to be able to reflect starting preparations}
+steroid_profiles_with_auc_17OHP$ARM_preparation_at_visit <-
+  paste0(gsub(steroid_profiles_with_auc_17OHP$ARM, pattern = " GC therapy", replacement = ""), 
+         "_", 
+         steroid_profiles_with_auc_17OHP$preparation_at_visit)
+
+#create scaled dose for plotting with ln auc
+scaling_factor <- 5
+steroid_profiles_with_auc_17OHP$scaled_dose <-
+  steroid_profiles_with_auc_17OHP$total_daily_hydrocortisone_equivalent_at_visit / scaling_factor
+
+#create ARM_multi_facet that allows us to split a grid into 4
+
+steroid_profiles_with_auc_17OHP$ARM_multi_facet <-
+  paste0(gsub(steroid_profiles_with_auc_17OHP$ARM, pattern = " GC therapy", replacement = ""), 
+         ("_"), 
+         steroid_profiles_with_auc_17OHP$COUNTRY)
+
+steroid_profiles_one_row_one_visit <- 
+  subset(steroid_profiles_with_auc_17OHP, 
+         time_of_test_hours_past_first_measurement==0 &
+        ARM!="Screen Failure")
+
+steroid_profiles_one_row_one_visit_on_chronocort <-
+  subset(steroid_profiles_one_row_one_visit, treatment=="Chronocort")
+
+steroid_profiles_one_row_one_visit_on_standard_therapy <-
+  subset(steroid_profiles_one_row_one_visit, treatment!="Chronocort")
+
+```
+
+```{r, print summary stats of markers in cah patientsto file}
+steroid_profiles_in_study <-
+  subset(steroid_profiles, 
+           ARM!="Screen Failure" & 
+           ARM!="Not Assigned")
+steroid_profiles_17OHP_in_study <-
+  subset(steroid_profiles, 
+           ARM!="Screen Failure" & 
+           ARM!="Not Assigned" & 
+           PARAM=="17-hydroxyprogesterone/ SI (nmol/L)")
+steroid_profiles_Androstenedione_in_study <-
+  subset(steroid_profiles, ARM!="Screen Failure" & ARM!="Not Assigned" & PARAM=="Androstenedione/ SI (nmol/L)")
+
+freq(steroid_profiles_in_study$ARM)
+sink("summary_statistics_of_patient_markers_from_file_35.txt")
+descr(steroid_profiles_17OHP_in_study$AVAL)
+descr(steroid_profiles_17OHP_in_study$ln_value_nM)
+descr(steroid_profiles_Androstenedione_in_study$AVAL)
+descr(steroid_profiles_Androstenedione_in_study$ln_value_nM)
+sink()
+```
+
+```{r, print summary stats of doses for CAH patients to file}
+sink("Dose_summaries_by_arm.txt")
+print("This file has the summary of numbers of patients on different hydrocortisone equivalent doses, dichotomised on request from Richard")
+cat("\n")
+cat("Overall visits on 10 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit<=10))
+cat("\n")
+cat("Overall visits on 15 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit<=15))
+cat("\n")
+cat("Overall visits on 25 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit<=25))
+cat("\n")
+cat("Overall visits on 30 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit<=30))
+cat("\n")
+cat("\n")
+cat("Overall visits less than 15\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit<15))
+cat("\n")
+cat("Overall visits 15 to 25 inclusive\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit>=15 &
+      steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit<=25
+      ))
+cat("\n")
+cat("Overall visits greater than 25\n")
+cat(sum(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit>25))
+cat("\n")
+cat("\n")
+cat("\n")
+cat("Chronocort visits on 10 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit<=10))
+cat("\n")
+cat("Chronocort visits on 15 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit<=15))
+cat("\n")
+cat("Chronocort visits on 25 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit<=25))
+cat("\n")
+cat("Chronocort visits on 30 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit<=30))
+cat("\n")
+cat("\n")
+cat("Chronocort visits less than 15\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit<15))
+cat("\n")
+cat("Chronocort visits 15 to 25 inclusive\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit>=15 &
+      steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit<=25
+      ))
+cat("\n")
+cat("Chronocort visits greater than 25\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit>25))
+cat("\n")
+cat("\n")
+cat("\n")
+cat("Standard therapy visits on 10 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit<=10))
+cat("\n")
+cat("Standard therapy visits on 15 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit<=15))
+cat("\n")
+cat("Standard therapy visits on 25 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit<=25))
+cat("\n")
+cat("Standard therapy visits on 30 or less\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit<=30))
+cat("\n")
+cat("\n")
+cat("Standard therapy visits less than 15\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit<15))
+cat("\n")
+cat("Standard therapy visits 15 to 25 inclusive\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit>=15 &
+      steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit<=25
+      ))
+cat("\n")
+cat("Standard therapy visits greater than 25\n")
+cat(sum(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit>25))
+cat("\n")
+cat("\n")
+sink()
+```
+
+```{r, plot geometric mean on ln AUC}
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=area_under_curve_17OHP, 
+                 y=mean_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+dir.create("average_metric_plots")
+ggsave(filename=paste0("mean_17OHP_on_area_under_curve_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+summary(lm(data=steroid_profiles_one_row_one_visit,
+             formula=mean_17OHP ~ area_under_curve_17OHP))
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=mean_17OHP, 
+                 y=sd_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot 
+ggsave(filename=paste0("sd_17OHP_on_mean_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_area_under_curve_17OHP, 
+                 y=mean_ln_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("mean_ln_17OHP_on_ln_area_under_curve_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_area_under_curve_17OHP, 
+                 y=ln_mean_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("ln_mean_17OHP_on_ln_area_under_curve_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+
+steroid_profiles_one_row_one_visit$temp_model <-
+  predict(lm(data=steroid_profiles_one_row_one_visit,
+             formula=mean_ln_17OHP ~ ln_area_under_curve_17OHP, 
+             na.action = na.exclude))
+steroid_profiles_one_row_one_visit$temp_model_minus_mean_ln_17OHP <-
+  steroid_profiles_one_row_one_visit$temp_model - steroid_profiles_one_row_one_visit$mean_ln_17OHP
+
+a <- steroid_profiles_one_row_one_visit[,c(
+  "id",
+  "VISITNUM",
+  "ARM",
+  "pre_trial_steroid_preparation",
+  "mean_17OHP",
+  "mean_ln_17OHP",
+  "area_under_curve_17OHP",
+  "ln_area_under_curve_17OHP",
+  "temp_model",
+  "temp_model_minus_mean_ln_17OHP"
+)]
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=mean_ln_17OHP, 
+                 y=sd_ln_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("mean_ln_17OHP_on_sd_ln_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_mean_17OHP, 
+                 y=ln_sd_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("ln_mean_17OHP_on_ln_sd_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_area_under_curve_17OHP, 
+                 y=sd_ln_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("sd_ln_17OHP_on_ln_area_under_curve_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_area_under_curve_17OHP, 
+                 y=ln_sd_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("ln_sd_17OHP_on_ln_area_under_curve_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=mean_ln_17OHP, 
+                 y=gmd_ln_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("gmd_ln_17OHP_on_mean_ln_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_mean_17OHP, 
+                 y=gmd_ln_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("gmd_ln_17OHP_on_ln_mean_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+plot <- 
+  ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=ln_area_under_curve_17OHP, 
+                 y=gmd_ln_17OHP
+#                 ,
+#                 colour=ARM)
+         )) +
+  geom_point() +
+  stat_regline_equation() +
+  stat_cor(label.y=0) +
+#  geom_line(aes(group=USUBJID)) +
+#  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+ggsave(filename=paste0("gmd_ln_17OHP_on_ln_area_under_curve_17OHP", ".tif"), 
+       path="./average_metric_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, facet plot AUC with visit}
+plot <- ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM)) +
+  geom_point() +
+  geom_line(aes(group=USUBJID)) +
+  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=30, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, facet plot dose with visit}
+plot <- ggplot(data=steroid_profiles_one_row_one_visit,
+             aes(x=days_beyond_baseline_visit, 
+                 y=total_daily_hydrocortisone_equivalent_at_visit,
+                 colour=ARM)) +
+  geom_point() +
+  geom_line(aes(group=USUBJID)) +
+  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_dosing", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=30, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, summary statistics of dose}
+sink("dose_plots/summary_statistics_of_total_dose.txt")
+print("Overall:")
+descr(steroid_profiles_one_row_one_visit$total_daily_hydrocortisone_equivalent_at_visit)
+print("Visits with Chronocort:")
+descr(steroid_profiles_one_row_one_visit_on_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+print("Visits with Standard therapy:")
+descr(steroid_profiles_one_row_one_visit_on_standard_therapy$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+```{r, ln 17OHP auc on dose for each preparation in a single plot WITHOUT coloured preparations}
+normative_17OHP_data_to_plot <- 
+  subset(normative_all_patient_spline_fits_both_markers, 
+         degrees_of_freedom==10 &
+           patient!="P24" #this patient doesn't have 17OHP data and the original code needs fixing to stop it calculating zero, but for now we just exclude them
+         )
+
+sink("normative_auc_values_17OHP_with_patient_numbers_within_above_below.txt")
+lower_17OHP_auc <- 
+  min(normative_17OHP_data_to_plot$area_under_curve_17OHP)
+upper_17OHP_auc <- 
+  max(normative_17OHP_data_to_plot$area_under_curve_17OHP)
+
+lower_ln_17OHP_auc <- 
+  min(normative_17OHP_data_to_plot$ln_area_under_curve_17OHP)
+upper_ln_17OHP_auc <- 
+  max(normative_17OHP_data_to_plot$ln_area_under_curve_17OHP)
+
+print("Profiles measured above range for 17OHP")
+nrow(subset(steroid_profiles_one_row_one_visit, ln_area_under_curve_17OHP > upper_ln_17OHP_auc))
+nrow(subset(steroid_profiles_one_row_one_visit, area_under_curve_17OHP > upper_17OHP_auc))
+
+print("Profiles measured in range for 17OHP")
+nrow(subset(steroid_profiles_one_row_one_visit, 
+            ln_area_under_curve_17OHP <= upper_ln_17OHP_auc &
+              ln_area_under_curve_17OHP >= lower_ln_17OHP_auc))
+nrow(subset(steroid_profiles_one_row_one_visit, 
+            area_under_curve_17OHP <= upper_17OHP_auc &
+              area_under_curve_17OHP >= lower_17OHP_auc))
+
+print("Profiles measured below range for 17OHP")
+nrow(subset(steroid_profiles_one_row_one_visit, ln_area_under_curve_17OHP < lower_ln_17OHP_auc))
+nrow(subset(steroid_profiles_one_row_one_visit, area_under_curve_17OHP < lower_17OHP_auc))
+
+sink()
+
+data_to_plot <- steroid_profiles_one_row_one_visit
+
+plot <- ggplot(data=steroid_profiles_one_row_one_visit) +
+
+  geom_ribbon(
+    aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+    y=ln_area_under_curve_17OHP,
+    xmin=0,
+    xmax=80,
+    ymin=lower_ln_17OHP_auc,
+    ymax=upper_ln_17OHP_auc
+    ),
+  alpha=0.3 ,
+  fill="lightgreen"
+  ) +
+  geom_point(data=steroid_profiles_one_row_one_visit_on_chronocort,
+               aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP),
+             colour="maroon",
+             shape=5,
+             alpha=0.6,
+             size=1.5,
+             stroke=1.5) +
+  geom_point(data=steroid_profiles_one_row_one_visit_on_standard_therapy,
+               aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP),
+             colour="black",
+             alpha=0.6,
+             shape=0,
+             size=1.5,
+             stroke=1.5) +
+#  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+#                 y=ln_area_under_curve_17OHP,
+#                 colour=ARM
+#                 ),
+#              linewidth=0.8,
+#              linetype="dashed",
+#              method="lm"
+#              , se=T,
+#              alpha=0.3
+#              ) +
+#  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+#                 y=ln_area_under_curve_17OHP
+#                 ),
+#                 colour="black",
+#              linewidth=0.8,
+#              linetype="dashed",
+#              method="lm"
+#              , 
+#              se=F,
+#              alpha=0.3
+#              ) +
+  coord_cartesian(xlim=c(10,80),
+                  ylim=c(0,10)) +
+  labs(
+    x="Total daily hydrocortisone equivalent (mg)",
+    y="ln AUC 17OHP at visit"
+  ) +
+  themepowerpoint
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc_17OHP_on_dose_single_plot_no_colours", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+#run a model of that to get the regression coefficients
+sink("dose_plots/accompanying_linear_model_statistics.txt")
+summary(
+  lm(
+    formula=ln_area_under_curve_17OHP ~ total_daily_hydrocortisone_equivalent_at_visit, 
+    data=steroid_profiles_one_row_one_visit))
+confint(lm(
+    formula=ln_area_under_curve_17OHP~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=steroid_profiles_one_row_one_visit))
+
+summary(
+  lm(
+    formula=ln_area_under_curve_17OHP~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(steroid_profiles_one_row_one_visit, SEX=="M")))
+
+summary(
+  lm(
+    formula=ln_area_under_curve_17OHP~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(steroid_profiles_one_row_one_visit, SEX=="F")))
+
+summary(
+  lm(
+    formula=ln_area_under_curve_17OHP~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(data_to_plot, ARM=="Standard GC therapy")))
+
+summary(
+  lm(
+    formula=ln_area_under_curve_17OHP~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(data_to_plot, ARM=="Chronocort")))
+
+print("*************************")
+
+summary(
+  lm(
+    formula=ln_area_under_curve_Androstenedione~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=data_to_plot))
+
+confint(lm(
+    formula=ln_area_under_curve_Androstenedione~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=data_to_plot))
+
+summary(
+  lm(
+    formula=ln_area_under_curve_Androstenedione~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(data_to_plot, ARM=="Standard GC therapy")))
+
+summary(
+  lm(
+    formula=ln_area_under_curve_Androstenedione~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(data_to_plot, ARM=="Chronocort")))
+
+sink()
+
+```
+
+```{r, ln 17OHP on dose without coloured preparations shaped as a calibration plot}
+data_to_plot <- steroid_profiles_one_row_one_visit
+
+prediction_equation <-
+  lm(formula=ln_area_under_curve_17OHP~total_daily_hydrocortisone_equivalent_at_visit, 
+    data=subset(data_to_plot))
+data_to_plot$prediction_from_dose <-
+  predict(prediction_equation)
+
+plot <- ggplot(data=data_to_plot) +
+  geom_point(aes(x=prediction_from_dose, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM),
+             alpha=0.5,
+             size=0.5) +
+  geom_smooth(aes(x=prediction_from_dose, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM
+                 ),
+              linewidth=0.8,
+              linetype="dashed",
+              method="lm"
+              , se=T,
+              alpha=0.3
+              ) +
+  geom_smooth(aes(x=prediction_from_dose, 
+                 y=ln_area_under_curve_17OHP
+                 ),
+                 colour="black",
+              linewidth=0.8,
+              linetype="dashed",
+              method="lm"
+              , se=T,
+              alpha=0.3
+              ) +
+  geom_abline(
+    intercept=0, 
+    slope=1,
+    colour="red"
+  ) +
+  coord_cartesian(xlim=c(0,10),
+                  ylim=c(0,10)) +
+  themepowerpointlegend
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc_17OHP_on_dose_as_calibration_plot", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=5, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, ln 17OHP auc on dose for each preparation in a single plot with coloured preparations}
+data_to_plot <- steroid_profiles_one_row_one_visit
+
+plot <- ggplot(data=data_to_plot) +
+  geom_rect(aes(
+    xmin=0,
+    xmax=70,
+    ymin=lower_ln_17OHP_auc,
+    ymax=upper_ln_17OHP_auc
+  ),
+  alpha=0.3 ,
+  fill="azure3") +
+  geom_point(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=preparation_at_visit),
+             alpha=0.5,
+             size=0.5) +
+  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=preparation_at_visit
+                 ),
+              method="lm"
+              , se=F,
+              linetype="dashed"
+              ) +
+  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP
+                 ),
+                 colour="black",
+              linewidth=0.8,
+              method="lm"
+              , se=T,
+              alpha=0.3
+              ) +
+  coord_cartesian(xlim=c(0,70),
+                  ylim=c(0,10)) +
+  themepowerpointlegend
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc_17OHP_on_dose_single_plot", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+```{r, ln Androstenedione auc on dose for each preparation in a single plot}
+normative_androstenedione_data_to_plot <- 
+  subset(normative_all_patient_spline_fits_both_markers, 
+         degrees_of_freedom==10 
+         )
+
+sink("normative_androstenedione_auc_values_with_patient_numbers_above_and_below.txt")
+lower_androstenedione_auc <- 
+  min(normative_androstenedione_data_to_plot$area_under_curve_Androstenedione)
+
+upper_androstenedione_auc <- 
+  max(normative_androstenedione_data_to_plot$area_under_curve_Androstenedione)
+
+lower_ln_androstenedione_auc <- 
+  min(normative_androstenedione_data_to_plot$ln_area_under_curve_Androstenedione)
+
+upper_ln_androstenedione_auc <- 
+  max(normative_androstenedione_data_to_plot$ln_area_under_curve_Androstenedione)
+
+print("Profiles measured above range for androstenedione")
+nrow(subset(steroid_profiles_one_row_one_visit, ln_area_under_curve_Androstenedione > upper_ln_androstenedione_auc))
+nrow(subset(steroid_profiles_one_row_one_visit, area_under_curve_Androstenedione > upper_androstenedione_auc))
+
+print("Profiles measured in range for androstenedione")
+nrow(subset(steroid_profiles_one_row_one_visit, 
+            ln_area_under_curve_Androstenedione <= upper_ln_androstenedione_auc &
+              ln_area_under_curve_Androstenedione >= lower_ln_androstenedione_auc))
+nrow(subset(steroid_profiles_one_row_one_visit, 
+            area_under_curve_Androstenedione <= upper_androstenedione_auc &
+              area_under_curve_Androstenedione >= lower_androstenedione_auc))
+
+print("Profiles measured below range for androstenedione")
+nrow(subset(steroid_profiles_one_row_one_visit, 
+            ln_area_under_curve_Androstenedione < lower_ln_androstenedione_auc))
+nrow(subset(steroid_profiles_one_row_one_visit, 
+            area_under_curve_Androstenedione < lower_androstenedione_auc))
+sink()
+
+data_to_plot <- steroid_profiles_one_row_one_visit
+
+plot <- ggplot(data=data_to_plot) +
+  geom_rect(aes(
+    xmin=0,
+    xmax=70,
+    ymin=lower_ln_androstenedione_auc,
+    ymax=upper_ln_androstenedione_auc
+  ),
+  alpha=0.3 ,
+  fill="azure3") +
+  geom_point(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=preparation_at_visit),
+             alpha=0.5,
+             size=0.5) +
+  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=preparation_at_visit
+                 ),
+              method="lm"
+              , se=F,
+              linetype="dashed"
+              ) +
+  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione
+                 ),
+                 colour="black",
+              linewidth=0.8,
+              method="lm"
+              , se=T,
+              alpha=0.3
+              ) +
+  coord_cartesian(xlim=c(0,70),
+                  ylim=c(0,7.5)) +
+  themepowerpointlegend
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc_androstenedione_on_dose_single_plot", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+```{r, ln Androstenedione auc on dose WITHOUT colours for preparation in a single plot}
+data_to_plot <- steroid_profiles_one_row_one_visit
+
+plot <- ggplot(data=steroid_profiles_one_row_one_visit) +
+  geom_ribbon(
+    aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+    y=ln_area_under_curve_Androstenedione,
+    xmin=0,
+    xmax=80,
+    ymin=lower_ln_androstenedione_auc,
+    ymax=upper_ln_androstenedione_auc
+    ),
+  alpha=0.3 ,
+  fill="lightgreen"
+  ) +
+  geom_point(data=steroid_profiles_one_row_one_visit_on_chronocort,
+               aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione),
+             colour="maroon",
+             shape=5,
+             alpha=0.6,
+             size=1.5,
+             stroke=1.5) +
+  geom_point(data=steroid_profiles_one_row_one_visit_on_standard_therapy,
+               aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione),
+             colour="black",
+             alpha=0.6,
+             shape=0,
+             size=1.5,
+             stroke=1.5) +
+#  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+#                 y=ln_area_under_curve_Androstenedione,
+#                 colour=ARM
+#                 ),
+#              linewidth=0.8,
+#              linetype="dashed",
+#              method="lm"
+#              , se=T,
+#              alpha=0.3
+#              ) +
+#  geom_smooth(aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+#                 y=ln_area_under_curve_Androstenedione
+#                 ),
+#                 colour="black",
+#              linewidth=0.8,
+#              linetype="dashed",
+#              method="lm"
+#              , 
+#              se=F,
+#              alpha=0.3
+#              ) +
+  coord_cartesian(xlim=c(10,80),
+                  ylim=c(0,7)) +
+  labs(
+    x="Total daily hydrocortisone equivalent (mg)",
+    y="ln AUC Androstenedione at visit"
+  ) +
+  themepowerpoint
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc_androstenedione_on_dose_single_plot_without_colours_for_preparation", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+```{r, dose against auc for each preparation in a facet}
+plot <- ggplot() +
+  geom_point(data=steroid_profiles_one_row_one_visit,
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM)) +
+  geom_line(data=steroid_profiles_one_row_one_visit,
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM,
+                 group=USUBJID)) +
+  geom_point(data=steroid_profiles_one_row_one_visit,
+             aes(x=days_beyond_baseline_visit, 
+                 y=scaled_dose),
+             colour="black") +
+  geom_line(data=steroid_profiles_one_row_one_visit,
+             aes(x=days_beyond_baseline_visit, 
+                 y=scaled_dose,
+                 group=USUBJID),
+            colour="black") +
+  facet_grid(pre_trial_steroid_preparation~ARM) +
+  themepowerpointlegend
+plot
+dir.create("dose_plots")
+ggsave(filename=paste0("ln_auc_in_dose_groups_facet", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=30, height=30, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+```{r, dose and both auc faceted by patient}
+plot <- 
+  ggplot(data=subset(steroid_profiles_one_row_one_visit, 
+    ARM=="Chronocort")) +
+  geom_point(
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM),
+             colour="blue") +
+  geom_line( aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM,
+                 group=USUBJID),
+             colour="blue") +
+  geom_point(
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=ARM),
+             colour="red") +
+  geom_line( aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=ARM,
+                 group=USUBJID),
+             colour="red") +
+  geom_point(aes(x=days_beyond_baseline_visit, 
+                 y=scaled_dose),
+             colour="black") +
+  geom_line( aes(x=days_beyond_baseline_visit, 
+                 y=scaled_dose,
+                 group=USUBJID),
+            colour="black") +
+  facet_wrap(~USUBJID) +
+  themepowerpointlegend
+#plot
+dir.create("dose_plots")
+ggsave(filename=paste0("both_ln_auc_and_dose_by_patient_chronocort", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=30, height=30, 
+       compression = "lzw", limitsize=F)
+
+plot <- ggplot(data=subset(steroid_profiles_one_row_one_visit, ARM=="Standard GC therapy")) +
+  geom_point(
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM),
+             colour="blue") +
+  geom_line( aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=ARM,
+                 group=USUBJID),
+             colour="blue") +
+  geom_point(
+             aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=ARM),
+             colour="red") +
+  geom_line( aes(x=days_beyond_baseline_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=ARM,
+                 group=USUBJID),
+             colour="red") +
+  geom_point(aes(x=days_beyond_baseline_visit, 
+                 y=scaled_dose),
+             colour="black") +
+  geom_line( aes(x=days_beyond_baseline_visit, 
+                 y=scaled_dose,
+                 group=USUBJID),
+            colour="black") +
+  facet_wrap(~USUBJID) +
+  themepowerpointlegend
+#plot
+dir.create("dose_plots")
+ggsave(filename=paste0("both_ln_auc_and_dose_by_patient_standard", ".tif"), 
+       path="./dose_plots/", 
+       plot = plot, 
+       device="tiff",  
+       width=30, height=30, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+```{r, total dose against control 17OHP auc and androstenedione auc}
+plot_17OHP <- ggplot(data=steroid_profiles_one_row_one_visit) +
+  geom_point(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=preparation_at_visit)) +
+  geom_smooth(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=preparation_at_visit),
+             se=F,
+             method="lm") +
+  facet_wrap(~AVISITN) +
+  themepowerpointlegend
+plot_17OHP
+plot_Androstenedione <- ggplot(data=steroid_profiles_one_row_one_visit) +
+  geom_point(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=preparation_at_visit)) +
+  geom_smooth(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=preparation_at_visit),
+             se=F,
+             method="lm") +
+  facet_wrap(~AVISITN) +
+  themepowerpointlegend
+plot_Androstenedione
+
+grid_plot <- grid.arrange(plot_17OHP, plot_Androstenedione,  
+             ncol=2)
+
+dir.create("dose_plots")
+ggsave(filename=paste0("different_doses_visits_grid_plot", ".tif"), 
+       path="./dose_plots/", 
+       plot = grid_plot, 
+       device="tiff",  
+       width=20, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, total dose against control just hgydrocort chronocort and pred}
+plot_17OHP <- ggplot(data=subset(steroid_profiles_one_row_one_visit, 
+                                 preparation_at_visit=="Chronocort" | 
+                                   preparation_at_visit=="Hydrocortisone" |
+                                   preparation_at_visit=="Prednisolone")) +
+  geom_point(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=preparation_at_visit)) +
+  geom_smooth(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_17OHP,
+                 colour=preparation_at_visit),
+             se=F,
+             method="lm") +
+  facet_wrap(~AVISITN) +
+  themepowerpointlegend
+plot_17OHP
+plot_Androstenedione <- ggplot(data=subset(steroid_profiles_one_row_one_visit, 
+                                 preparation_at_visit=="Chronocort" | 
+                                   preparation_at_visit=="Hydrocortisone" |
+                                   preparation_at_visit=="Prednisolone")) +
+  geom_point(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=preparation_at_visit)) +
+  geom_smooth(
+             aes(x=total_daily_hydrocortisone_equivalent_at_visit, 
+                 y=ln_area_under_curve_Androstenedione,
+                 colour=preparation_at_visit),
+             se=F,
+             method="lm") +
+  facet_wrap(~AVISITN) +
+  themepowerpointlegend
+plot_Androstenedione
+
+grid_plot <- grid.arrange(plot_17OHP, plot_Androstenedione,  
+             ncol=2)
+
+dir.create("dose_plots")
+ggsave(filename=paste0("different_doses_visits_grid_plot_main_preparations", ".tif"), 
+       path="./dose_plots/", 
+       plot = grid_plot, 
+       device="tiff",  
+       width=20, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+we want to create a summary frame for the dosing
+
+```{r, summary of dosing by visit}
+dosing_summary_by_visit <-
+  steroid_profiles_one_row_one_visit %>%
+  group_by(AVISITN, ARM_preparation_at_visit) %>%
+  dplyr::reframe(
+    n = n(),
+    mean_ln_AUC_17OHP_times_5 = 5 * mean(ln_area_under_curve_17OHP, na.rm=T),
+    sd_ln_AUC_17OHP_times_5 = 5 * sd(ln_area_under_curve_17OHP, na.rm=T),
+    mean_dose = mean(total_daily_hydrocortisone_equivalent_at_visit, na.rm=T),
+    sd_dose = sd(total_daily_hydrocortisone_equivalent_at_visit, na.rm=T))
+
+dosing_summary_by_visit$lower_CI_ln_AUC_17OHP <- 
+  dosing_summary_by_visit$mean_ln_AUC_17OHP_times_5 -
+  dosing_summary_by_visit$sd_ln_AUC_17OHP_times_5 * 1.96
+
+dosing_summary_by_visit$upper_CI_ln_AUC_17OHP <- 
+  dosing_summary_by_visit$mean_ln_AUC_17OHP_times_5 +
+  dosing_summary_by_visit$sd_ln_AUC_17OHP_times_5 * 1.96
+
+dosing_summary_by_visit$lower_CI_dose <- 
+  dosing_summary_by_visit$mean_dose -
+  dosing_summary_by_visit$sd_dose * 1.96
+
+dosing_summary_by_visit$upper_CI_dose <- 
+  dosing_summary_by_visit$mean_dose +
+  dosing_summary_by_visit$sd_dose * 1.96
+
+#paste together visit number and arm preparation at visit to be able to easily join together confidence intervals
+dosing_summary_by_visit$AVISITN_ARM_preparation_at_visit <-
+  paste0((dosing_summary_by_visit$ARM_preparation_at_visit), 
+         "_", 
+         dosing_summary_by_visit$AVISITN)
+
+```
+
+```{r, plot the total doseages in the different groups}
+
+#define the preparations we want
+preparations_to_plot <-
+  c(
+    "Chronocort_Dexamethasone",  
+    "Chronocort_Hydrocortisone", 
+    "Chronocort_Prednisolone",   
+    "Standard_Dexamethasone"    ,
+    "Standard_Hydrocortisone"   ,
+    "Standard_Prednisolone"    ,
+    "Chronocort_Chronocort" 
+    )
+
+#subset the doses to plot out
+dosing_summary_to_plot <-
+  subset(dosing_summary_by_visit, ARM_preparation_at_visit %in% preparations_to_plot)
+
+#use the row names to get a plotting number
+dosing_summary_to_plot$plot_number_dose <- 
+  as.numeric(rownames(dosing_summary_to_plot))
+
+#for the ln_AUC we want to subtract 0.25 from the plotting number
+dosing_summary_to_plot$plot_number_auc <- 
+  dosing_summary_to_plot$plot_number_dose - 0.25
+
+#do a long version for confidence intervals 
+auc_confidence_interval_frame <- pivot_longer(
+  dosing_summary_to_plot,
+  cols = c(lower_CI_ln_AUC_17OHP, upper_CI_ln_AUC_17OHP),
+  names_to = "confidence",
+  values_to = "bound"
+  )
+dose_confidence_interval_frame <- pivot_longer(
+  dosing_summary_to_plot,
+  cols = c(lower_CI_dose, upper_CI_dose),
+  names_to = "confidence",
+  values_to = "bound"
+  )
+
+dose_averages_by_preparation_plot <- 
+  ggplot(data=dosing_summary_to_plot) +
+  
+  geom_line(data=auc_confidence_interval_frame, 
+            aes(x=plot_number_auc,
+                y=bound,
+                group=AVISITN_ARM_preparation_at_visit,
+                colour=ARM_preparation_at_visit),
+            linetype="dashed") +
+  
+  geom_line(data=dose_confidence_interval_frame, 
+            aes(x=plot_number_dose,
+                y=bound,
+                group=AVISITN_ARM_preparation_at_visit,
+                colour=ARM_preparation_at_visit)) +
+  
+  geom_point(aes(x=plot_number_auc,
+                 y=mean_ln_AUC_17OHP_times_5,
+                 colour=ARM_preparation_at_visit)) + 
+  
+  geom_point(aes(x=plot_number_dose,
+                 y=mean_dose,
+                 colour=ARM_preparation_at_visit),
+             shape="square") + 
+  
+  annotate(geom="text", 
+           x=dosing_summary_to_plot$plot_number_dose, 
+           y=50, 
+           label=gsub(dosing_summary_to_plot$ARM_preparation_at_visit, pattern=".*_", replacement=""),  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=90,
+           hjust=0) +   
+#annotate in explanation of the first few representing patients that moved to chronocort  
+  annotate(geom="text", 
+           x=1, 
+           y=5, 
+           label="Moved to \nChronocort",  
+           color="black", 
+           size=2, 
+           fontface="bold",
+           angle=0,
+           hjust=0) +    
+#annotate in visit 1
+  annotate(geom="text", 
+           x=3.5, 
+           y=0, 
+           label="Visit 1",  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=0,
+           hjust=0.5) +    
+#annotate in visit 2
+  annotate(geom="text", 
+           x=8.5, 
+           y=0, 
+           label="Visit 2",  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=0,
+           hjust=0.5) +    
+#annotate in visit 3
+  annotate(geom="text", 
+           x=12.5, 
+           y=0, 
+           label="Visit 3",  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=0,
+           hjust=0.5) +    
+#annotate in visit 4
+  annotate(geom="text", 
+           x=16.5, 
+           y=0, 
+           label="Visit 4",  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=0,
+           hjust=0.5) + 
+#annotate in a right axis
+  annotate(geom="text", 
+           x=20, 
+           y=25, 
+           label="Natural Log AUC 17OHP",  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=90,
+           hjust=0.5) + 
+  annotate(geom="text", 
+           x=19, 
+           y=c(20, 40), 
+           label=c(4, 8),  
+           color="black", 
+           size=3, 
+           fontface="bold",
+           angle=0,
+           hjust=0.5) + 
+  
+  rotate_x_text(60)  +
+  
+  geom_line(aes(x=plot_number_dose,
+                y=mean_dose,
+                group=ARM_preparation_at_visit,
+                colour=ARM_preparation_at_visit),
+            alpha=0.2) +
+  
+  geom_line(aes(x=plot_number_auc,
+                y=mean_ln_AUC_17OHP_times_5,
+                group=ARM_preparation_at_visit,
+                colour=ARM_preparation_at_visit),
+            linetype="dashed",
+            alpha=0.5) +
+  
+  geom_vline(xintercept=c(6.5, 10.5, 14.5)) +
+  
+  theme(panel.background = element_rect(fill="white",colour="white"),
+        axis.line.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.x=element_blank()) +
+  
+  labs(title= "Dashed/Circle = Control (AUC), Solid/Square = Dosing",
+    y= "Hydrocortisone equivalent dose (mg/day)") +
+  
+  ylim(0,60)
+
+dose_averages_by_preparation_plot
+
+dir.create("dose_plots")
+ggsave(filename=paste0("dose_averages_by_preparation_plot", ".tif"), 
+       path="./dose_plots/", 
+       plot = dose_averages_by_preparation_plot, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_6")
+```

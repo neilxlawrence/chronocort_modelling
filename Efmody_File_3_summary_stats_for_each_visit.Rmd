@@ -1,0 +1,335 @@
+
+clear environment and load packades
+
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "all_patient_spline_fits_both_markers"
+    ))
+
+```
+
+we could go here for mean absolute difference as well
+could go for relative mean absolute difference - frank didn't mention that
+Or GINI's mean difference
+
+
+create a dplyr summarise function so that I can list columns to summarise, and then apply it to different frames and different groupings
+```{r, create function to calculate summary statistics}
+dplyr_summarise_my_columns <- function(
+    data_frame
+){
+    dplyr::summarise(.data=data_frame,
+#####################################################
+#17OHP spline fit statistics collated across patients
+#17OHP area under curve                     
+    mean_auc_17OHp = mean(area_under_curve_17OHP, na.rm=T),
+    median_auc_17OHp = median(area_under_curve_17OHP, na.rm=T),
+    sd_auc_17OHP = sd(area_under_curve_17OHP, na.rm=T),
+#17OHP natural log area under curve
+    mean_ln_area_under_curve_17OHP=mean(ln_area_under_curve_17OHP, na.rm=T),
+    median_ln_area_under_curve_17OHP=median(ln_area_under_curve_17OHP, na.rm=T),
+    sd_ln_area_under_curve_17OHP=sd(ln_area_under_curve_17OHP, na.rm=T),
+#17OHP minimum spline values
+    mean_min_non_negative_17OHP_spline_fit=mean(min_non_negative_17OHP_spline_fit,na.rm=T),
+    median_min_non_negative_17OHP_spline_fit=median(min_non_negative_17OHP_spline_fit,na.rm=T),
+    sd_min_non_negative_17OHP_spline_fit=sd(min_non_negative_17OHP_spline_fit,na.rm=T),
+#17OHP maximum spline values
+    mean_max_non_negative_17OHP_spline_fit=mean(max_non_negative_17OHP_spline_fit,na.rm=T),
+    median_max_non_negative_17OHP_spline_fit=median(max_non_negative_17OHP_spline_fit,na.rm=T),
+    sd_max_non_negative_17OHP_spline_fit=sd(max_non_negative_17OHP_spline_fit,na.rm=T),
+#17OHP sd of spline values
+    mean_sd_non_negative_17OHP_spline_fit=mean(sd_non_negative_17OHP_spline_fit, na.rm=T),
+    median_sd_non_negative_17OHP_spline_fit=median(sd_non_negative_17OHP_spline_fit, na.rm=T),
+    sd_sd_non_negative_17OHP_spline_fit=sd(sd_non_negative_17OHP_spline_fit, na.rm=T),
+#17OHP minimum natural log of spline values
+    mean_min_non_negative_ln_17OHP_spline_fit=mean(min_non_negative_ln_17OHP_spline_fit,na.rm=T),
+    median_min_non_negative_ln_17OHP_spline_fit=median(min_non_negative_ln_17OHP_spline_fit,na.rm=T),
+    sd_min_non_negative_ln_17OHP_spline_fit=sd(min_non_negative_ln_17OHP_spline_fit,na.rm=T),
+#17OHP maximum natural log of spline values    
+    mean_max_non_negative_ln_17OHP_spline_fit=mean(max_non_negative_ln_17OHP_spline_fit,na.rm=T),
+    median_max_non_negative_ln_17OHP_spline_fit=median(max_non_negative_ln_17OHP_spline_fit,na.rm=T),
+    sd_max_non_negative_ln_17OHP_spline_fit=sd(max_non_negative_ln_17OHP_spline_fit,na.rm=T),
+#17OHP sd of natural log of spline values
+    mean_sd_non_negative_ln_17OHP_spline_fit=mean(sd_non_negative_ln_17OHP_spline_fit, na.rm=T),
+    median_sd_non_negative_ln_17OHP_spline_fit=median(sd_non_negative_ln_17OHP_spline_fit, na.rm=T),
+    sd_sd_non_negative_ln_17OHP_spline_fit=sd(sd_non_negative_ln_17OHP_spline_fit, na.rm=T),
+#17OHP r squared values, i.e. the coefficient of determination
+    mean_ceof_determination_17OHP = mean(coefficient_of_determination_17OHP, na.rm=T),
+    median_ceof_determination_17OHP = median(coefficient_of_determination_17OHP, na.rm=T),
+    sd_ceof_determination_17OHP = sd(coefficient_of_determination_17OHP, na.rm=T),
+#################################
+#Androstenedione spline fit statistics collated across patients
+#Androstenedione area under curve   
+    mean_auc_Androstenedione = mean(area_under_curve_Androstenedione, na.rm=T),
+    median_auc_Androstenedione = median(area_under_curve_Androstenedione, na.rm=T),
+    sd_auc_Androstenedione = sd(area_under_curve_Androstenedione, na.rm=T),
+#Androstenedione natural log area under curve   
+    mean_ln_area_under_curve_Androstenedione=mean(ln_area_under_curve_Androstenedione, na.rm=T),
+    median_ln_area_under_curve_Androstenedione=median(ln_area_under_curve_Androstenedione, na.rm=T),
+    sd_ln_area_under_curve_Androstenedione=sd(ln_area_under_curve_Androstenedione, na.rm=T),
+#Androstenedione minimum spline fit values
+    mean_min_non_negative_Androstenedione_spline_fit=mean(min_non_negative_Androstenedione_spline_fit,na.rm=T),
+    median_min_non_negative_Androstenedione_spline_fit=median(min_non_negative_Androstenedione_spline_fit,na.rm=T),
+    sd_min_non_negative_Androstenedione_spline_fit=sd(min_non_negative_Androstenedione_spline_fit,na.rm=T),
+#Androstenedeione maximum spline fit values    
+    mean_max_non_negative_Androstenedione_spline_fit=mean(max_non_negative_Androstenedione_spline_fit,na.rm=T),
+    median_max_non_negative_Androstenedione_spline_fit=median(max_non_negative_Androstenedione_spline_fit,na.rm=T),
+    sd_max_non_negative_Androstenedione_spline_fit=sd(max_non_negative_Androstenedione_spline_fit,na.rm=T),
+#Androstenedeione SD of spline fit values    
+    mean_sd_non_negative_Androstenedione_spline_fit=mean(sd_non_negative_Androstenedione_spline_fit, na.rm=T),
+    median_sd_non_negative_Androstenedione_spline_fit=median(sd_non_negative_Androstenedione_spline_fit, na.rm=T),
+    sd_sd_non_negative_Androstenedione_spline_fit=sd(sd_non_negative_Androstenedione_spline_fit, na.rm=T),
+#Androstenedione minimum spline fit values
+    mean_min_non_negative_ln_Androstenedione_spline_fit=
+      mean(min_non_negative_ln_Androstenedione_spline_fit,na.rm=T),
+    median_min_non_negative_ln_Androstenedione_spline_fit=
+      median(min_non_negative_ln_Androstenedione_spline_fit,na.rm=T),
+    sd_min_non_negative_ln_Androstenedione_spline_fit=
+      sd(min_non_negative_ln_Androstenedione_spline_fit,na.rm=T),
+#Androstenedione maximum spline fit values
+    mean_max_non_negative_ln_Androstenedione_spline_fit=
+      mean(max_non_negative_ln_Androstenedione_spline_fit,na.rm=T),
+    median_max_non_negative_ln_Androstenedione_spline_fit=
+      median(max_non_negative_ln_Androstenedione_spline_fit,na.rm=T),
+    sd_max_non_negative_ln_Androstenedione_spline_fit=
+      sd(max_non_negative_ln_Androstenedione_spline_fit,na.rm=T),
+#Androstenedione SD of log of spline fit values
+    mean_sd_non_negative_ln_Androstenedione_spline_fit=
+      mean(sd_non_negative_ln_Androstenedione_spline_fit, na.rm=T),
+    median_sd_non_negative_ln_Androstenedione_spline_fit=
+      median(sd_non_negative_ln_Androstenedione_spline_fit, na.rm=T),
+    sd_sd_non_negative_ln_Androstenedione_spline_fit=
+      sd(sd_non_negative_ln_Androstenedione_spline_fit, na.rm=T),
+#R squared for androstenedione fit
+    mean_ceof_determination_Androstenedione = mean(coefficient_of_determination_Androstenedione, na.rm=T),
+    median_ceof_determination_Androstenedione = median(coefficient_of_determination_Androstenedione, na.rm=T),
+    sd_ceof_determination_Androstenedione = sd(coefficient_of_determination_Androstenedione, na.rm=T),
+####################################
+#Comparison of spline fit statistics
+#then we collate averages across patients of the comparison between marker spline fits
+    mean_mean_ratio_absolute_17OHP_to_Androstenedione = mean(mean_ratio_absolute_17OHP_to_Androstenedione, na.rm=T),
+    median_mean_ratio_absolute_17OHP_to_Androstenedione = mean(mean_ratio_absolute_17OHP_to_Androstenedione, na.rm=T),
+    sd_mean_ratio_absolute_17OHP_to_Androstenedione = mean(mean_ratio_absolute_17OHP_to_Androstenedione, na.rm=T),
+#then we collate averages across patients of the comparison between marker spline fits
+    mean_sd_ratio_absolute_17OHP_to_Androstenedione = mean(sd_ratio_absolute_17OHP_to_Androstenedione, na.rm=T),
+    median_sd_ratio_absolute_17OHP_to_Androstenedione = median(sd_ratio_absolute_17OHP_to_Androstenedione, na.rm=T),
+    sd_sd_ratio_absolute_17OHP_to_Androstenedione = sd(sd_ratio_absolute_17OHP_to_Androstenedione, na.rm=T),
+####################################
+#Peak and trough statistics
+#all patient total peaks 17OHp stats    
+    mean_total_peaks_17OHP = mean(total_number_of_peaks_17OHP, na.rm=T),
+    median_total_peaks_17OHP = median(total_number_of_peaks_17OHP, na.rm=T),
+    sd_total_peaks_17OHP = sd(total_number_of_peaks_17OHP, na.rm=T),
+#all patient total trough 17OHP stats
+    mean_total_troughs_17OHP = mean(total_number_of_peaks_17OHP, na.rm=T),
+    median_total_troughs_17OHP = median(total_number_of_peaks_17OHP, na.rm=T),
+    sd_total_troughs_17OHP = sd(total_number_of_peaks_17OHP, na.rm=T),
+#all patient total peaks Androstenedione stats
+    mean_total_peaks_Androstenedione = mean(total_number_of_peaks_Androstenedione, na.rm=T),
+    median_total_peaks_Androstenedione = median(total_number_of_peaks_Androstenedione, na.rm=T),
+    sd_total_peaks_Androstenedione = sd(total_number_of_peaks_Androstenedione, na.rm=T),
+#all patient total troughs Androstenedione stats
+    mean_total_troughs_Androstenedione = mean(total_number_of_peaks_Androstenedione, na.rm=T),
+    median_total_troughs_Androstenedione = median(total_number_of_peaks_Androstenedione, na.rm=T),
+    sd_total_troughs_Androstenedione = sd(total_number_of_peaks_Androstenedione, na.rm=T),
+#summary stats of the different peak and trough values and times across patients:
+    mean_value_at_first_peak_17OHP = mean(value_at_first_peak_17OHP, na.rm=T),
+    sd_value_at_first_peak_17OHP = sd(value_at_first_peak_17OHP, na.rm=T),
+    median_value_at_first_peak_17OHP = median(value_at_first_peak_17OHP, na.rm=T),
+    mean_time_at_first_peak_17OHP = mean(time_at_first_peak_17OHP, na.rm=T),
+    sd_time_at_first_peak_17OHP = sd(time_at_first_peak_17OHP, na.rm=T),
+    median_time_at_first_peak_17OHP = median(time_at_first_peak_17OHP, na.rm=T),
+    mean_value_at_first_peak_Androstenedione = mean(value_at_first_peak_Androstenedione, na.rm=T),
+    sd_value_at_first_peak_Androstenedione = sd(value_at_first_peak_Androstenedione, na.rm=T),
+    median_value_at_first_peak_Androstenedione = median(value_at_first_peak_Androstenedione, na.rm=T),
+    mean_time_at_first_peak_Androstenedione = mean(time_at_first_peak_Androstenedione, na.rm=T),
+    sd_time_at_first_peak_Androstenedione = sd(time_at_first_peak_Androstenedione, na.rm=T),
+    median_time_at_first_peak_Androstenedione = median(time_at_first_peak_Androstenedione, na.rm=T),
+    mean_time_at_second_peak_17OHP = mean(time_at_second_peak_17OHP, na.rm=T),
+    sd_time_at_second_peak_17OHP = sd(time_at_second_peak_17OHP, na.rm=T),
+    median_time_at_second_peak_17OHP = median(time_at_second_peak_17OHP, na.rm=T),
+    mean_time_at_second_peak_Androstenedione = mean(time_at_second_peak_Androstenedione, na.rm=T),
+    sd_time_at_second_peak_Androstenedione = sd(time_at_second_peak_Androstenedione, na.rm=T),
+    median_time_at_second_peak_Androstenedione = median(time_at_second_peak_Androstenedione, na.rm=T)
+  )
+
+}
+
+```
+
+
+```{r, collate summary statistics by arm and degrees of freedom}
+spline_summary_stats_total_by_degrees <-
+  all_patient_spline_fits_both_markers %>%
+  filter(arm!="Screen Failure") %>%
+  group_by(degrees_of_freedom, visit_number) %>%
+  dplyr_summarise_my_columns()
+#add an arm saying 'total' on the left of that frame by creating a simple frame, and binding to it
+arm <- data.frame(arm="total")
+spline_summary_stats_total_by_degrees <- 
+  cbind(arm, spline_summary_stats_total_by_degrees)
+#then summarise by other arm
+spline_summary_stats_by_arm_and_degrees <-
+  all_patient_spline_fits_both_markers %>%
+  filter(arm!="Screen Failure") %>%
+  group_by(arm, degrees_of_freedom, visit_number) %>%
+  dplyr_summarise_my_columns()
+#we can then stack the total and the different arms together by binding rows:
+spline_summary_stats_by_degrees <-
+  rbind(
+    spline_summary_stats_total_by_degrees,
+    spline_summary_stats_by_arm_and_degrees
+  )
+```
+
+spline_summary_stats_by_degrees therefore has all the stats we want, just with all the different degrees of freedom, which isn't easy to look down. So we want to filter out each degree of freedom
+
+```{r, print transposed summary stats to csv by each degree of freedom}
+#find out how many degrees_of_freedom we have created
+total_degrees_of_freedom <- 
+  unique(spline_summary_stats_by_degrees$degrees_of_freedom)
+dir.create("spline_summary_stats_csv_outputs")
+#for each degree of freedom, we want to filter the rows out, then transpose the table and print it to csv
+
+for (each_degree in total_degrees_of_freedom){
+  visit_stats_bound_together <- data.frame(NULL)
+for (each_visit in 1:4){
+  summary_stats_of_degree <- 
+    subset(spline_summary_stats_by_degrees, 
+           degrees_of_freedom==each_degree & 
+           visit_number==each_visit)
+  visit_stats_bound_together <- rbind(visit_stats_bound_together, summary_stats_of_degree)
+  transposed_summary_stats_of_degree <- as.data.frame(t(summary_stats_of_degree))
+  write.csv(transposed_summary_stats_of_degree, 
+            paste0("./spline_summary_stats_csv_outputs/transposed_summary_stats_of_degree_", 
+                   each_degree, 
+                   "_at_visit_number_", 
+                   each_visit,
+                   ".csv"),
+                    row.names=T)
+}
+  transposed_visit_stats_bound_together <- as.data.frame(t(visit_stats_bound_together))
+  write.csv(transposed_visit_stats_bound_together, 
+            paste0("./spline_summary_stats_csv_outputs/visit_stats_bound_together_with_", 
+                   each_degree,
+                   "_degrees_of_freedom",
+                   ".csv"),
+                   row.names=T)
+}
+```
+
+
+that gives us nice tables of the summary stats, but now we want a visualisation of those stats
+
+
+```{r, create comparison violin plots between arms for a list of metrics}
+#find out how many degrees_of_freedom we have created
+total_degrees_of_freedom <- 
+  unique(spline_summary_stats_by_degrees$degrees_of_freedom)
+for (degrees_of_freedom_to_plot in 10){
+#filter out the appropriate degrees_of_freedom
+spline_summary_data_to_plot <-
+  all_patient_spline_fits_both_markers %>%
+  filter(arm!="Screen Failure") %>%
+  filter(degrees_of_freedom==degrees_of_freedom_to_plot)
+
+parameter_columns_to_plot <- 
+  c("area_under_curve_17OHP", 
+    "ln_area_under_curve_17OHP",
+    "area_under_curve_Androstenedione",
+    "ln_area_under_curve_Androstenedione",
+    "area_under_curve_absolute_difference",
+    "area_under_curve_scaled_difference",
+    "max_non_negative_17OHP_spline_fit",
+    "max_non_negative_Androstenedione_spline_fit",
+    "max_non_negative_ln_17OHP_spline_fit",
+    "max_non_negative_ln_Androstenedione_spline_fit",
+    "sd_non_negative_17OHP_spline_fit",
+    "sd_non_negative_ln_17OHP_spline_fit",
+    "sd_non_negative_Androstenedione_spline_fit",
+    "sd_non_negative_ln_Androstenedione_spline_fit",
+    "sd_ratio_absolute_17OHP_to_Androstenedione",
+    "mean_ratio_absolute_17OHP_to_Androstenedione",
+    "median_ratio_absolute_17OHP_to_Androstenedione",
+    "max_17OHp_to_max_Androstenedione_Ratio",
+    "max_17OHP_spline_to_max_Androstenedione_spline_ratio"
+    )
+#then make the frame long to facilitate box plotting
+long_spline_summary_data_to_plot <- 
+  pivot_longer(
+    spline_summary_data_to_plot, 
+    cols = parameter_columns_to_plot,
+    names_to = "parameter_to_plot", 
+    values_to = "value_to_plot"
+  )
+#add 'visit number' to the visit number so it facets nicely
+long_spline_summary_data_to_plot$visit_name <-
+  paste0("Visit Number ", long_spline_summary_data_to_plot$visit_number)
+for (parameter in (parameter_columns_to_plot)){
+for (visit in 1:4){  
+#create a boxplot of what we want
+data_to_plot <- subset(long_spline_summary_data_to_plot, 
+                     parameter_to_plot==parameter)  
+plot_to_print <-
+  ggplot(data=data_to_plot, 
+               aes(x=arm,
+                   y=value_to_plot)) +
+  geom_violin(linewidth=0.1,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_signif(comparisons = list(c("Chronocort", "Standard GC therapy")), 
+              test="t.test",
+              map_signif_level=F,
+              vjust=2) +
+#  geom_point(size=0.1) +
+  geom_dotplot(aes(x=arm,
+                   y=value_to_plot),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 0.02 * max(data_to_plot$value_to_plot),
+               stackratio = 1,
+               fill="white",
+               dotsize=0.1) +
+  facet_wrap(~visit_name) +
+#  coord_flip() +
+
+  labs(title=paste0(parameter, "_df_", degrees_of_freedom_to_plot),
+       subtitle="Violin lines at quantiles of 0.25, 0.5, 0.75" ,
+       y=parameter) + 
+  rotate_x_text(60) +
+  themepowerpointtitle
+dir.create("violin_comparison_plots_by_arm")
+dir.create(paste0("violin_comparison_plots_by_arm/degrees_of_freedom_", degrees_of_freedom_to_plot))
+ggsave(filename=paste0("violin_comparison_of_", parameter, "_df_", degrees_of_freedom_to_plot, ".tif"), 
+       path=paste0("violin_comparison_plots_by_arm/degrees_of_freedom_", degrees_of_freedom_to_plot),
+       plot = plot_to_print, 
+       device="tiff",  
+       width=5, height=10, 
+       compression = "lzw", limitsize=F)
+  
+
+print("finished rendering parameter =")
+print(parameter)
+print("finished rendering visit =")
+print(visit)
+}}}
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_3")
+```
+
+
+
+

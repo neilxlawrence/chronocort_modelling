@@ -1,0 +1,1235 @@
+clear environment and load packages
+
+```{r, load packages}
+rm(list=ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles",
+                                   "patient_details"))
+
+gini_mean_difference <- function(x) {
+  # Ensure the data is in a numeric vector
+  if (!is.numeric(x)) {
+    stop("Data must be numeric.")
+  }
+  
+  # Calculate all possible absolute differences
+  n <- length(x)
+  differences <- outer(x, x, FUN = function(a, b) abs(a - b))
+  
+  # Average these differences
+  gmd <- sum(differences) / (n * n)
+  
+  return(gmd)
+}
+```
+
+let's find the lower limit of detection
+```{r, establish lower limit of detection}
+values_for_androstenedione <- subset(steroid_profiles, PARAM=="Androstenedione/ SI (nmol/L)")
+values_for_17OHP <- subset(steroid_profiles, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)")
+min(values_for_androstenedione$AVAL, na.rm=T)
+min(values_for_17OHP$AVAL, na.rm=T)
+```
+
+the lower level of detection of androstenedione is 0.085, and the lower level of 17OHP is 0.12
+
+The following code creates a smoothed spline containing the points either side of the stated 'splinesds' score
+
+```{r, spline loops for both markers plotted together, absolute scales}
+#the spline knot width is hours
+spline_knot_width <- 0.01
+ylim_for_17OHP <- 300
+ylim_for_Androstenedione <- 20
+
+#create our frames and lists to add to 
+all_patient_spline_fits_both_markers <- data.frame(NULL)
+list_of_spline_curve_frames_Androstenedione <- as.list(NULL)
+list_of_spline_curve_frames_17OHP <- as.list(NULL)
+list_of_visit_spline_fit_frames_Androstenedione <- as.list(NULL)
+list_of_visit_spline_fit_frames_17OHP <- as.list(NULL)
+list_of_spline_difference_frames <- as.list(NULL)
+list_of_spline_model_fit_frames_joined <- as.list(NULL)
+
+for(degrees_of_freedom in 10){
+#you can create a marker name here   
+marker <- "Both 17OHP and Androstenedione on absolute scale"  
+marker_folder_name <- gsub(x=marker, pattern = " ", replacement="")
+marker_folder_name <- gsub(x=marker_folder_name, pattern = "/", replacement="")
+marker_folder_name <- gsub(x=marker_folder_name, pattern = "\\(", replacement="")
+marker_folder_name <- gsub(x=marker_folder_name, pattern = "\\)", replacement="")
+marker_folder_name <- gsub(x=marker_folder_name, pattern = "\\-", replacement="")
+
+  for (visit_number in 1:4){
+
+  for (each_patient in patient_details$id){
+
+#create visit_name here to get something nice to facet to in the future
+visit_name <- paste0("Visit ", visit_number)
+
+#take out the data for that patient for the visit for 17OHP
+one_patient_17OHP_one_visit <- 
+  subset(steroid_profiles, id==each_patient &
+                                PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" &
+                                AVISITN==visit_number & 
+                                !is.na(AVAL) &
+                                !is.na(time_of_test_hours_past_first_measurement))
+
+one_patient_17OHP_one_visit$time_of_test_hours_past_first_measurement
+
+one_patient_17OHP_one_visit <- 
+  subset(steroid_profiles, id==each_patient  &
+                                PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" &
+                                AVISITN==visit_number& 
+                                !is.na(AVAL) )
+
+#take out the data for that patient for the visit for Androstenedione
+
+one_patient_Androstenedione_one_visit <- 
+  subset(steroid_profiles, id==each_patient &
+                                PARAM=="Androstenedione/ SI (nmol/L)" &
+                                AVISITN==visit_number & 
+                                !is.na(AVAL) &
+                                !is.na(time_of_test_hours_past_first_measurement))
+
+#take out the sex of the patient
+sex_of_patient <- one_patient_17OHP_one_visit$SEX[1]
+
+#take out the age of the patient
+age_of_patient <- one_patient_17OHP_one_visit$AGE[1]
+
+#pull out the days beyond baseline visit from one of these frames to add to our summary frame
+days_beyond_baseline_visit <-
+  one_patient_17OHP_one_visit$days_beyond_baseline_visit[1]
+
+#skip if both frames have less than 2 readings as we can't fit a spline to either of them
+if(nrow(one_patient_17OHP_one_visit)<2 & nrow(one_patient_Androstenedione_one_visit)<2) next
+
+#pull out the arm the patient is in to add to the spline frames later
+arm_of_trial <- one_patient_17OHP_one_visit$ARM[1]
+
+#establish the number of markers measured to ensure we dont miss anything (should always be 13)
+n_17OHP <-
+  length(one_patient_17OHP_one_visit$AVAL)
+
+n_Androstenedione <-
+  length(one_patient_Androstenedione_one_visit$AVAL)
+
+#calculate the mean of the markers
+mean_17OHP <-
+  mean(one_patient_17OHP_one_visit$AVAL)
+
+mean_Androstenedione <-
+  mean(one_patient_Androstenedione_one_visit$AVAL)
+
+#calculate the standard deviation of the markers
+sd_17OHP <-
+  sd(one_patient_17OHP_one_visit$AVAL)
+
+sd_Androstenedione <-
+  sd(one_patient_Androstenedione_one_visit$AVAL)
+
+#calculate the ln of the mean of the markers
+ln_mean_17OHP <-
+  log(mean(one_patient_17OHP_one_visit$AVAL))
+
+ln_mean_Androstenedione <-
+  log(mean(one_patient_Androstenedione_one_visit$AVAL))
+
+#calculate the ln of the standard deviation of the markers
+ln_sd_17OHP <-
+  log(sd(one_patient_17OHP_one_visit$AVAL))
+
+ln_sd_Androstenedione <-
+  log(sd(one_patient_Androstenedione_one_visit$AVAL))
+
+#calculate the mean of the ln of the markers
+mean_ln_17OHP <-
+  mean(log(one_patient_17OHP_one_visit$AVAL))
+
+mean_ln_Androstenedione <-
+  mean(log(one_patient_Androstenedione_one_visit$AVAL))
+
+#calculate the standard deviation of the ln of the markers
+sd_ln_17OHP <-
+  sd(log(one_patient_17OHP_one_visit$AVAL))
+
+sd_ln_Androstenedione <-
+  sd(log(one_patient_Androstenedione_one_visit$AVAL))
+
+#calculate the geometric mean of the markers (this is the exponent of the mean of the data on the ln scale)
+geometric_mean_17OHP <-
+  exp(mean(log(one_patient_17OHP_one_visit$AVAL)))
+
+geometric_mean_Androstenedione <-
+  exp(mean(log(one_patient_Androstenedione_one_visit$AVAL)))
+
+#calculate the geometric standard deviation of the markers (this is the exponent of the standard deviation of the ln transformed data)
+geometric_sd_17OHP <-
+  exp(sd(log(one_patient_17OHP_one_visit$AVAL)))
+
+geometric_sd_Androstenedione <-
+  exp(sd(log(one_patient_Androstenedione_one_visit$AVAL)))
+
+#calculate the gini's mean difference of the markers
+gmd_17OHP <- 
+  gini_mean_difference(one_patient_17OHP_one_visit$AVAL)
+
+gmd_Androstenedione <- 
+  gini_mean_difference(one_patient_Androstenedione_one_visit$AVAL)
+
+#calculate the gini's mean difference of the ln of the markers
+gmd_ln_17OHP <- 
+  gini_mean_difference(log(one_patient_17OHP_one_visit$AVAL))
+
+gmd_ln_Androstenedione <- 
+  gini_mean_difference(log(one_patient_Androstenedione_one_visit$AVAL))
+
+#fit the spline model to both frames separately
+spline_model_17OHP_fit <-  
+  smooth.spline(one_patient_17OHP_one_visit$time_of_test_hours_past_first_measurement,
+                one_patient_17OHP_one_visit$AVAL,
+                df=degrees_of_freedom) 
+
+spline_model_Androstenedione_fit <-  
+  smooth.spline(one_patient_Androstenedione_one_visit$time_of_test_hours_past_first_measurement,
+                one_patient_Androstenedione_one_visit$AVAL,
+                df=degrees_of_freedom) 
+
+#add the spline_model_fit predictions to those individuals frames
+one_patient_17OHP_one_visit$spline_model_17OHP_fit <-
+  predict(spline_model_17OHP_fit)$y
+
+one_patient_Androstenedione_one_visit$spline_model_Androstenedione_fit <-
+  predict(spline_model_Androstenedione_fit)$y
+
+#add the spline_model_first_derivative predictions to those individuals frames
+one_patient_17OHP_one_visit$spline_model_17OHP_first_derivative_fit <-
+  predict(spline_model_17OHP_fit, deriv=1)$y
+
+one_patient_Androstenedione_one_visit$spline_model_Androstenedione_first_derivative_fit <-
+  predict(spline_model_Androstenedione_fit, deriv=1)$y
+
+#add the spline_model_second_derivative predictions to those individuals frames
+one_patient_17OHP_one_visit$spline_model_17OHP_second_derivative_fit <-
+  predict(spline_model_17OHP_fit, deriv=2)$y
+
+one_patient_Androstenedione_one_visit$spline_model_Androstenedione_second_derivative_fit <-
+  predict(spline_model_Androstenedione_fit, deriv=2)$y
+
+#get max of each marker to be able to report that on each plot
+max_17OHP <- max(one_patient_17OHP_one_visit$AVAL, na.rm=T)
+
+max_Androstenedione <- max(one_patient_Androstenedione_one_visit$AVAL, na.rm=T)
+
+max_17OHp_to_max_Androstenedione_Ratio <-
+  max_17OHP / 
+  max_Androstenedione
+
+#multiply values of Androstenedione by 10 for plotting of easier comparisons
+one_patient_Androstenedione_one_visit$Androstenedione_times_ten <-
+  one_patient_Androstenedione_one_visit$AVAL * 10
+
+#calculate residuals
+one_patient_17OHP_one_visit$residual <- 
+  one_patient_17OHP_one_visit$AVAL - one_patient_17OHP_one_visit$spline_model_17OHP_fit 
+
+one_patient_Androstenedione_one_visit$residual <- 
+  one_patient_Androstenedione_one_visit$AVAL - 
+  one_patient_Androstenedione_one_visit$spline_model_Androstenedione_fit 
+
+#calculate standardised residuals
+one_patient_17OHP_one_visit$standardised_residual <- 
+  (one_patient_17OHP_one_visit$AVAL - one_patient_17OHP_one_visit$spline_model_17OHP_fit)/
+  (one_patient_17OHP_one_visit$spline_model_17OHP_fit^0.5)
+
+one_patient_Androstenedione_one_visit$standardised_residual <- 
+  (one_patient_Androstenedione_one_visit$AVAL - 
+     one_patient_Androstenedione_one_visit$spline_model_Androstenedione_fit)/
+  (one_patient_Androstenedione_one_visit$spline_model_Androstenedione_fit^0.5)
+
+#calculate sum squared regression - the sum of the residuals squared
+sum_squared_regression_17OHP <- sum((one_patient_17OHP_one_visit$residual)^2)
+
+sum_squared_regression_Androstenedione <- sum((one_patient_Androstenedione_one_visit$residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_17OHP_one_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_one_visit$AVAL - mean(one_patient_17OHP_one_visit$AVAL) ) ^ 2
+
+one_patient_Androstenedione_one_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_one_visit$AVAL - mean(one_patient_Androstenedione_one_visit$AVAL) ) ^ 2
+
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_17OHP <- sum(one_patient_17OHP_one_visit$observed_from_mean_squared_17OHP)
+
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_one_visit$observed_from_mean_squared_Androstenedione)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_17OHP <- ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+
+coefficient_of_determination_Androstenedione <- ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_17OHP <- 
+  data.frame(id=each_patient,
+             sex=sex_of_patient,
+             age=age_of_patient,
+             visit_number=visit_number,
+             visit_name=visit_name,
+             arm=arm_of_trial,
+             marker="17OHP",
+             degrees_of_freedom=degrees_of_freedom,
+             time_of_test_hours_past_first_measurement=seq(0, 24, by=spline_knot_width))
+
+spline_model_fit_frame_Androstenedione <- 
+  data.frame(id=each_patient,
+             sex=sex_of_patient,
+             age=age_of_patient,
+             visit_number=visit_number,
+             visit_name=visit_name,
+             arm=arm_of_trial,
+             marker="Androstenedione",
+             degrees_of_freedom=degrees_of_freedom,
+             time_of_test_hours_past_first_measurement=seq(0, 24, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_17OHP$y <- 
+  predict(spline_model_17OHP_fit, 
+          spline_model_fit_frame_17OHP$time_of_test_hours_past_first_measurement)$y
+
+spline_model_fit_frame_Androstenedione$y <- 
+  predict(spline_model_Androstenedione_fit, 
+          spline_model_fit_frame_Androstenedione$time_of_test_hours_past_first_measurement)$y
+
+#predict the first derivative of the spline fit
+spline_model_fit_frame_17OHP$first_derivative_y <- 
+  predict(spline_model_17OHP_fit, 
+          spline_model_fit_frame_17OHP$time_of_test_hours_past_first_measurement, 
+          deriv=1)$y
+
+spline_model_fit_frame_Androstenedione$first_derivative_y <- 
+  predict(spline_model_Androstenedione_fit,
+          spline_model_fit_frame_Androstenedione$time_of_test_hours_past_first_measurement,
+          deriv=1)$y
+
+#predict the second derivative of the spline fit
+spline_model_fit_frame_17OHP$second_derivative_y <- 
+  predict(spline_model_17OHP_fit, 
+          spline_model_fit_frame_17OHP$time_of_test_hours_past_first_measurement, 
+          deriv=2)$y
+
+spline_model_fit_frame_Androstenedione$second_derivative_y <- 
+  predict(spline_model_Androstenedione_fit,
+          spline_model_fit_frame_Androstenedione$time_of_test_hours_past_first_measurement,
+          deriv=2)$y
+
+
+#multiply the spline fit by 10 for androstenedione
+spline_model_fit_frame_Androstenedione$y_times_ten <-
+  spline_model_fit_frame_Androstenedione$y * 10
+
+#get max of each spline fit to be able to scale all values to the spline
+max_17OHP_spline <- 
+  max(spline_model_fit_frame_17OHP$y, na.rm=T)
+max_Androstenedione_spline <- 
+  max(spline_model_fit_frame_Androstenedione$y, na.rm=T)
+
+#get the ratio of the max spline fit
+max_17OHP_spline_to_max_Androstenedione_spline_ratio <-
+  max_17OHP_spline /
+  max_Androstenedione_spline
+
+#divide values by the max to get a scaled by spline value
+one_patient_17OHP_one_visit$scaled_to_spline_17OHP <-
+  one_patient_17OHP_one_visit$AVAL / max_17OHP_spline
+one_patient_Androstenedione_one_visit$scaled_to_spline_Androstenedione <-
+  one_patient_Androstenedione_one_visit$AVAL / max_Androstenedione_spline
+
+#scale the spline fit by the max of the marker
+spline_model_fit_frame_17OHP$scaled_to_spline_y <-
+  spline_model_fit_frame_17OHP$y / max_17OHP_spline
+spline_model_fit_frame_Androstenedione$scaled_to_spline_y <-
+  spline_model_fit_frame_Androstenedione$y / max_Androstenedione_spline
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_17OHP$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP$y < 0.12, 0.12, spline_model_fit_frame_17OHP$y)
+spline_model_fit_frame_17OHP$ln_non_negative_y <- 
+  log(spline_model_fit_frame_17OHP$non_negative_y)
+spline_model_fit_frame_Androstenedione$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione$y < 0.085, 0.085, spline_model_fit_frame_Androstenedione$y)
+spline_model_fit_frame_Androstenedione$ln_non_negative_y <- 
+  log(spline_model_fit_frame_Androstenedione$non_negative_y)
+spline_model_fit_frame_Androstenedione$non_negative_y_times_ten <- 
+  spline_model_fit_frame_Androstenedione$non_negative_y * 10
+spline_model_fit_frame_Androstenedione$ln_non_negative_y_times_ten <- 
+  log(spline_model_fit_frame_Androstenedione$non_negative_y_times_ten)
+
+#scale the non negative spline fit also by the max of the marker
+spline_model_fit_frame_17OHP$non_negative_scaled_to_spline_y <-
+  spline_model_fit_frame_17OHP$non_negative_y / max_17OHP_spline
+spline_model_fit_frame_Androstenedione$non_negative_scaled_to_spline_y <-
+  spline_model_fit_frame_Androstenedione$non_negative_y / max_Androstenedione_spline
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_17OHP$lag_non_negative_y <- lag(spline_model_fit_frame_17OHP$non_negative_y)
+spline_model_fit_frame_Androstenedione$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione$non_negative_y)
+
+#calculate the area since the last time point. As we are always positive or zero, this will simply be the spline_knot_width x the average of the current time point and previous time point. 
+spline_model_fit_frame_17OHP$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP$non_negative_y)/2
+
+area_under_curve_17OHP <- sum(spline_model_fit_frame_17OHP$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_17OHP <- log(area_under_curve_17OHP)
+
+spline_model_fit_frame_Androstenedione$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione$lag_non_negative_y +
+                         spline_model_fit_frame_Androstenedione$non_negative_y)/2
+
+area_under_curve_Androstenedione <- 
+  sum(spline_model_fit_frame_Androstenedione$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Androstenedione <- 
+  log(area_under_curve_Androstenedione)
+
+#extract the maximum of each curve
+max_non_negative_17OHP_spline_fit <- 
+  max(spline_model_fit_frame_17OHP$non_negative_y, na.rm=T)
+max_non_negative_Androstenedione_spline_fit <- 
+  max(spline_model_fit_frame_Androstenedione$non_negative_y, na.rm=T)
+
+#extract the minimum of each curve
+min_non_negative_17OHP_spline_fit <- 
+  min(spline_model_fit_frame_17OHP$non_negative_y, na.rm=T)
+min_non_negative_Androstenedione_spline_fit <- 
+  min(spline_model_fit_frame_Androstenedione$non_negative_y, na.rm=T)
+
+#extract the maximum of the natural log of the spline fit
+max_non_negative_ln_17OHP_spline_fit <- 
+  max(spline_model_fit_frame_17OHP$ln_non_negative_y, na.rm=T)
+max_non_negative_ln_Androstenedione_spline_fit <- 
+  max(spline_model_fit_frame_Androstenedione$ln_non_negative_y, na.rm=T)
+
+#extract the minimum of the natural log of the spline fit
+min_non_negative_ln_17OHP_spline_fit <- 
+  min(spline_model_fit_frame_17OHP$ln_non_negative_y, na.rm=T)
+min_non_negative_ln_Androstenedione_spline_fit <- 
+  min(spline_model_fit_frame_Androstenedione$ln_non_negative_y, na.rm=T)
+
+#extract the standard deviation of the spline fit
+sd_non_negative_17OHP_spline_fit <- 
+  sd(spline_model_fit_frame_17OHP$non_negative_y, na.rm=T)
+sd_non_negative_Androstenedione_spline_fit <- 
+  sd(spline_model_fit_frame_Androstenedione$non_negative_y, na.rm=T)
+
+#extract the standard deviation of the natural log of the spline fit
+sd_non_negative_ln_17OHP_spline_fit <- 
+  sd(spline_model_fit_frame_17OHP$ln_non_negative_y, na.rm=T)
+sd_non_negative_ln_Androstenedione_spline_fit <- 
+  sd(spline_model_fit_frame_Androstenedione$ln_non_negative_y, na.rm=T)
+
+#define the peaks and draw lines at them and we can check the methodology visually
+spline_model_fit_frame_17OHP$lead_non_negative_y <- 
+  lead(spline_model_fit_frame_17OHP$non_negative_y)
+spline_model_fit_frame_Androstenedione$lead_non_negative_y <- 
+  lead(spline_model_fit_frame_Androstenedione$non_negative_y)
+
+#find out when we are descending. Note the round in this code, because a rounding error sometimes says very small numbers are not the same, presumably due to some very small trailing digits coming from the model fit
+spline_model_fit_frame_17OHP$descend_after_this <- 
+  ifelse(round(spline_model_fit_frame_17OHP$non_negative_y, digits=5) > 
+           round(spline_model_fit_frame_17OHP$lead_non_negative_y, digits=5), 1, 0)
+
+spline_model_fit_frame_Androstenedione$descend_after_this <- 
+  ifelse(round(spline_model_fit_frame_Androstenedione$non_negative_y, digits=5) > 
+           round(spline_model_fit_frame_Androstenedione$lead_non_negative_y, digits=5), 1, 0)
+
+#find out if we were previously descending
+spline_model_fit_frame_17OHP$lag_descend_after_this <- lag(spline_model_fit_frame_17OHP$descend_after_this)
+spline_model_fit_frame_Androstenedione$lag_descend_after_this <- lag(spline_model_fit_frame_Androstenedione$descend_after_this)
+
+spline_model_fit_frame_17OHP$lead_descend_after_this <- 
+  lead(spline_model_fit_frame_17OHP$descend_after_this)
+spline_model_fit_frame_17OHP$lead_lead_descend_after_this <- 
+  lead(spline_model_fit_frame_17OHP$lead_descend_after_this)
+spline_model_fit_frame_17OHP$lead_lead_lead_descend_after_this <- 
+  lead(spline_model_fit_frame_17OHP$lead_lead_descend_after_this)
+spline_model_fit_frame_17OHP$lead_lead_lead_lead_descend_after_this <- 
+  lead(spline_model_fit_frame_17OHP$lead_lead_lead_descend_after_this)
+
+#we also need to create lag_descend_after_this to the power of five i.e. laglaglaglaglag to make the previous trajectory more robust also
+spline_model_fit_frame_17OHP$lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_17OHP$lag_descend_after_this)
+spline_model_fit_frame_17OHP$lag_lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_17OHP$lag_lag_descend_after_this)
+spline_model_fit_frame_17OHP$lag_lag_lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_17OHP$lag_lag_lag_descend_after_this)
+spline_model_fit_frame_17OHP$lag_lag_lag_lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_17OHP$lag_lag_lag_lag_descend_after_this)
+
+#Do the same for androstenedione
+spline_model_fit_frame_Androstenedione$lead_descend_after_this <- 
+  lead(spline_model_fit_frame_Androstenedione$descend_after_this)
+spline_model_fit_frame_Androstenedione$lead_lead_descend_after_this <- 
+  lead(spline_model_fit_frame_Androstenedione$lead_descend_after_this)
+spline_model_fit_frame_Androstenedione$lead_lead_lead_descend_after_this <- 
+  lead(spline_model_fit_frame_Androstenedione$lead_lead_descend_after_this)
+spline_model_fit_frame_Androstenedione$lead_lead_lead_lead_descend_after_this <- 
+  lead(spline_model_fit_frame_Androstenedione$lead_lead_lead_descend_after_this)
+
+#we also need to create lag_descend_after_this to the power of five i.e. laglaglaglaglag to make the previous trajectory more robust also
+spline_model_fit_frame_Androstenedione$lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_Androstenedione$lag_descend_after_this)
+spline_model_fit_frame_Androstenedione$lag_lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_Androstenedione$lag_lag_descend_after_this)
+spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_Androstenedione$lag_lag_lag_descend_after_this)
+spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_lag_descend_after_this <- 
+  lag(spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_descend_after_this)
+
+#now we can say we need descend_after_this and all the leads up to lead_lead_lead_lead_descend_after_this to be positive, alongside the previous reading saying that they weren't descending. That makes the previous reading lead up to a descent, and the following five readings fall, hence we are at a peak rather than a minor blip caused by rounding
+spline_model_fit_frame_17OHP$peak <- ifelse(spline_model_fit_frame_17OHP$descend_after_this==1 &
+                                      spline_model_fit_frame_17OHP$lead_descend_after_this==1 &
+                                      spline_model_fit_frame_17OHP$lead_lead_descend_after_this==1 &
+                                      spline_model_fit_frame_17OHP$lead_lead_lead_descend_after_this==1 &
+                                      spline_model_fit_frame_17OHP$lead_lead_lead_lead_descend_after_this==1 &
+                                      #now make sure the previous five were not descending  
+                                      spline_model_fit_frame_17OHP$lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_17OHP$lag_lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_17OHP$lag_lag_lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_17OHP$lag_lag_lag_lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_17OHP$lag_lag_lag_lag_lag_descend_after_this==0,
+                                      1,
+                                      0)
+
+#if we're about to not descend in this reading and the next four readings, and were previously descending, then we're at a trough
+spline_model_fit_frame_17OHP$trough <- ifelse(spline_model_fit_frame_17OHP$descend_after_this==0 &
+                                        spline_model_fit_frame_17OHP$lead_descend_after_this==0 &
+                                        spline_model_fit_frame_17OHP$lead_lead_descend_after_this==0 &
+                                        spline_model_fit_frame_17OHP$lead_lead_lead_descend_after_this==0 &
+                                        spline_model_fit_frame_17OHP$lead_lead_lead_lead_descend_after_this==0 &
+                                        #now make sure the previous five were descending
+                                        spline_model_fit_frame_17OHP$lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_17OHP$lag_lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_17OHP$lag_lag_lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_17OHP$lag_lag_lag_lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_17OHP$lag_lag_lag_lag_lag_descend_after_this==1,
+                                        1,
+                                        0)
+
+#same for androstenedione
+spline_model_fit_frame_Androstenedione$peak <- ifelse(spline_model_fit_frame_Androstenedione$descend_after_this==1 &
+                                      spline_model_fit_frame_Androstenedione$lead_descend_after_this==1 &
+                                      spline_model_fit_frame_Androstenedione$lead_lead_descend_after_this==1 &
+                                      spline_model_fit_frame_Androstenedione$lead_lead_lead_descend_after_this==1 &
+                                      spline_model_fit_frame_Androstenedione$lead_lead_lead_lead_descend_after_this==1 &
+                                      #now make sure the previous five were not descending  
+                                      spline_model_fit_frame_Androstenedione$lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_Androstenedione$lag_lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_Androstenedione$lag_lag_lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_descend_after_this==0 &  
+                                      spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_lag_descend_after_this==0,
+                                      1,
+                                      0)
+
+#if we're about to not descend in this reading and the next four readings, and were previously descending, then we're at a trough
+spline_model_fit_frame_Androstenedione$trough <- ifelse(spline_model_fit_frame_Androstenedione$descend_after_this==0 &
+                                        spline_model_fit_frame_Androstenedione$lead_descend_after_this==0 &
+                                        spline_model_fit_frame_Androstenedione$lead_lead_descend_after_this==0 &
+                                        spline_model_fit_frame_Androstenedione$lead_lead_lead_descend_after_this==0 &
+                                        spline_model_fit_frame_Androstenedione$lead_lead_lead_lead_descend_after_this==0 &
+                                        #now make sure the previous five were descending
+                                        spline_model_fit_frame_Androstenedione$lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_Androstenedione$lag_lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_Androstenedione$lag_lag_lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_descend_after_this==1 &  
+                                        spline_model_fit_frame_Androstenedione$lag_lag_lag_lag_lag_descend_after_this==1,
+                                        1,
+                                        0)
+
+#separate out our peaks and troughs
+spline_model_fit_17OHP_peaks <- 
+  subset(spline_model_fit_frame_17OHP, peak==1)
+spline_model_fit_Androstenedione_peaks <- 
+  subset(spline_model_fit_frame_Androstenedione, peak==1)
+
+#number the rows as the peak in each of the graph, if there are any peaks
+if (nrow(spline_model_fit_17OHP_peaks) > 0){
+  spline_model_fit_17OHP_peaks$peak_number <- 1:nrow(spline_model_fit_17OHP_peaks)
+}
+
+if (nrow(spline_model_fit_Androstenedione_peaks) > 0){
+  spline_model_fit_Androstenedione_peaks$peak_number <- 1:nrow(spline_model_fit_Androstenedione_peaks)
+}
+
+#get total number of peaks, if there are any peaks
+total_number_of_peaks_17OHP <- nrow(spline_model_fit_17OHP_peaks)
+total_number_of_peaks_Androstenedione <- nrow(spline_model_fit_Androstenedione_peaks)
+
+#separate our troughs
+spline_model_fit_17OHP_troughs <- 
+  subset(spline_model_fit_frame_17OHP, trough==1)
+spline_model_fit_Androstenedione_troughs <- 
+  subset(spline_model_fit_frame_Androstenedione, trough==1)
+
+#number the rows as the trough in each of the graph, if there are any troughs
+if (nrow(spline_model_fit_17OHP_troughs) > 0){
+  spline_model_fit_17OHP_troughs$trough_number <- 1:nrow(spline_model_fit_17OHP_troughs)
+}
+
+if (nrow(spline_model_fit_Androstenedione_troughs) > 0){
+  spline_model_fit_Androstenedione_troughs$trough_number <- 1:nrow(spline_model_fit_Androstenedione_troughs)
+}
+
+#get total number of troughs
+total_number_of_troughs_17OHP <- nrow(spline_model_fit_17OHP_troughs)
+total_number_of_troughs_Androstenedione <- nrow(spline_model_fit_Androstenedione_troughs)
+
+#then from those frames we can extract the times and spline values at each peak for 17OHP
+time_at_first_peak_17OHP<- spline_model_fit_17OHP_peaks[1,"time_of_test_hours_past_first_measurement"]
+value_at_first_peak_17OHP<- spline_model_fit_17OHP_peaks[1,"non_negative_y"]
+time_at_second_peak_17OHP<- spline_model_fit_17OHP_peaks[2,"time_of_test_hours_past_first_measurement"]
+value_at_second_peak_17OHP<- spline_model_fit_17OHP_peaks[2,"non_negative_y"]
+time_at_third_peak_17OHP<- spline_model_fit_17OHP_peaks[3,"time_of_test_hours_past_first_measurement"]
+value_at_third_peak_17OHP<- spline_model_fit_17OHP_peaks[3,"non_negative_y"]
+time_at_fourth_peak_17OHP<- spline_model_fit_17OHP_peaks[4,"time_of_test_hours_past_first_measurement"]
+value_at_fourth_peak_17OHP<- spline_model_fit_17OHP_peaks[4,"non_negative_y"]
+time_at_fifth_peak_17OHP<- spline_model_fit_17OHP_peaks[5,"time_of_test_hours_past_first_measurement"]
+value_at_fifth_peak_17OHP<- spline_model_fit_17OHP_peaks[5,"non_negative_y"]
+time_at_sixth_peak_17OHP<- spline_model_fit_17OHP_peaks[6,"time_of_test_hours_past_first_measurement"]
+value_at_sixth_peak_17OHP<- spline_model_fit_17OHP_peaks[6,"non_negative_y"]
+time_at_seventh_peak_17OHP<- spline_model_fit_17OHP_peaks[7,"time_of_test_hours_past_first_measurement"]
+value_at_seventh_peak_17OHP<- spline_model_fit_17OHP_peaks[7,"non_negative_y"]
+time_at_eighth_peak_17OHP<- spline_model_fit_17OHP_peaks[8,"time_of_test_hours_past_first_measurement"]
+value_at_eighth_peak_17OHP<- spline_model_fit_17OHP_peaks[8,"non_negative_y"]
+time_at_ninth_peak_17OHP<- spline_model_fit_17OHP_peaks[9,"time_of_test_hours_past_first_measurement"]
+value_at_ninth_peak_17OHP<- spline_model_fit_17OHP_peaks[9,"non_negative_y"]
+time_at_tenth_peak_17OHP<- spline_model_fit_17OHP_peaks[10,"time_of_test_hours_past_first_measurement"]
+value_at_tenth_peak_17OHP<- spline_model_fit_17OHP_peaks[10,"non_negative_y"]
+
+#then from those frames we can extract the times and spline values at each trough for 17OHP
+time_at_first_trough_17OHP <- spline_model_fit_17OHP_troughs[1,"time_of_test_hours_past_first_measurement"]
+value_at_first_trough_17OHP <- spline_model_fit_17OHP_troughs[1,"non_negative_y"]
+time_at_second_trough_17OHP <- spline_model_fit_17OHP_troughs[2,"time_of_test_hours_past_first_measurement"]
+value_at_second_trough_17OHP <- spline_model_fit_17OHP_troughs[2,"non_negative_y"]
+time_at_third_trough_17OHP <- spline_model_fit_17OHP_troughs[3,"time_of_test_hours_past_first_measurement"]
+value_at_third_trough_17OHP <- spline_model_fit_17OHP_troughs[3,"non_negative_y"]
+time_at_fourth_trough_17OHP <- spline_model_fit_17OHP_troughs[4,"time_of_test_hours_past_first_measurement"]
+value_at_fourth_trough_17OHP <- spline_model_fit_17OHP_troughs[4,"non_negative_y"]
+time_at_fifth_trough_17OHP <- spline_model_fit_17OHP_troughs[5,"time_of_test_hours_past_first_measurement"]
+value_at_fifth_trough_17OHP <- spline_model_fit_17OHP_troughs[5,"non_negative_y"]
+time_at_sixth_trough_17OHP <- spline_model_fit_17OHP_troughs[6,"time_of_test_hours_past_first_measurement"]
+value_at_sixth_trough_17OHP <- spline_model_fit_17OHP_troughs[6,"non_negative_y"]
+time_at_seventh_trough_17OHP <- spline_model_fit_17OHP_troughs[7,"time_of_test_hours_past_first_measurement"]
+value_at_seventh_trough_17OHP <- spline_model_fit_17OHP_troughs[7,"non_negative_y"]
+time_at_eighth_trough_17OHP <- spline_model_fit_17OHP_troughs[8,"time_of_test_hours_past_first_measurement"]
+value_at_eighth_trough_17OHP <- spline_model_fit_17OHP_troughs[8,"non_negative_y"]
+time_at_ninth_trough_17OHP <- spline_model_fit_17OHP_troughs[9,"time_of_test_hours_past_first_measurement"]
+value_at_ninth_trough_17OHP <- spline_model_fit_17OHP_troughs[9,"non_negative_y"]
+time_at_tenth_trough_17OHP <- spline_model_fit_17OHP_troughs[10,"time_of_test_hours_past_first_measurement"]
+value_at_tenth_trough_17OHP <- spline_model_fit_17OHP_troughs[10,"non_negative_y"]
+
+#then from those frames we can extract the times and spline values at each peak for androstenedione
+time_at_first_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[1,"time_of_test_hours_past_first_measurement"]
+value_at_first_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[1,"non_negative_y"]
+time_at_second_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[2,"time_of_test_hours_past_first_measurement"]
+value_at_second_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[2,"non_negative_y"]
+time_at_third_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[3,"time_of_test_hours_past_first_measurement"]
+value_at_third_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[3,"non_negative_y"]
+time_at_fourth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[4,"time_of_test_hours_past_first_measurement"]
+value_at_fourth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[4,"non_negative_y"]
+time_at_fifth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[5,"time_of_test_hours_past_first_measurement"]
+value_at_fifth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[5,"non_negative_y"]
+time_at_sixth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[6,"time_of_test_hours_past_first_measurement"]
+value_at_sixth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[6,"non_negative_y"]
+time_at_seventh_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[7,"time_of_test_hours_past_first_measurement"]
+value_at_seventh_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[7,"non_negative_y"]
+time_at_eighth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[8,"time_of_test_hours_past_first_measurement"]
+value_at_eighth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[8,"non_negative_y"]
+time_at_ninth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[9,"time_of_test_hours_past_first_measurement"]
+value_at_ninth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[9,"non_negative_y"]
+time_at_tenth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[10,"time_of_test_hours_past_first_measurement"]
+value_at_tenth_peak_Androstenedione<- spline_model_fit_Androstenedione_peaks[10,"non_negative_y"]
+
+#then from those frames we can extract the times and spline values at each trough for androstenedione
+time_at_first_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[1,"time_of_test_hours_past_first_measurement"]
+value_at_first_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[1,"non_negative_y"]
+time_at_second_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[2,"time_of_test_hours_past_first_measurement"]
+value_at_second_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[2,"non_negative_y"]
+time_at_third_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[3,"time_of_test_hours_past_first_measurement"]
+value_at_third_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[3,"non_negative_y"]
+time_at_fourth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[4,"time_of_test_hours_past_first_measurement"]
+value_at_fourth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[4,"non_negative_y"]
+time_at_fifth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[5,"time_of_test_hours_past_first_measurement"]
+value_at_fifth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[5,"non_negative_y"]
+time_at_sixth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[6,"time_of_test_hours_past_first_measurement"]
+value_at_sixth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[6,"non_negative_y"]
+time_at_seventh_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[7,"time_of_test_hours_past_first_measurement"]
+value_at_seventh_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[7,"non_negative_y"]
+time_at_eighth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[8,"time_of_test_hours_past_first_measurement"]
+value_at_eighth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[8,"non_negative_y"]
+time_at_ninth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[9,"time_of_test_hours_past_first_measurement"]
+value_at_ninth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[9,"non_negative_y"]
+time_at_tenth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[10,"time_of_test_hours_past_first_measurement"]
+value_at_tenth_trough_Androstenedione <- spline_model_fit_Androstenedione_troughs[10,"non_negative_y"]
+
+
+#we also want to know the distance between measurements, which we can plot in a third colour
+spline_difference_frame <- 
+  data.frame(
+    id=each_patient,
+    visit_number=visit_number,
+    visit_name=visit_name,
+    arm=arm_of_trial,
+    marker="17OHP",
+    degrees_of_freedom=degrees_of_freedom,
+    time_of_test_hours_past_first_measurement=
+      spline_model_fit_frame_17OHP$time_of_test_hours_past_first_measurement,
+    OHP_scaled_to_spline=
+      spline_model_fit_frame_17OHP$non_negative_scaled_to_spline_y,
+    Androstenedione_scaled_to_spline=
+      spline_model_fit_frame_Androstenedione$non_negative_scaled_to_spline_y,
+    OHP_absolute_spline=spline_model_fit_frame_17OHP$non_negative_y,
+    Androstenedione_absolute_spline=spline_model_fit_frame_Androstenedione$non_negative_y
+  )
+#calculate the differences - note we square and square root
+spline_difference_frame$spline_scaled_difference <- 
+  ((spline_difference_frame$OHP_scaled_to_spline - spline_difference_frame$Androstenedione_scaled_to_spline)^2)^0.5
+
+#calculate the differences - note we square and square root to get absolute
+spline_difference_frame$spline_absolute_difference <- 
+  ((spline_difference_frame$OHP_absolute_spline - spline_difference_frame$Androstenedione_absolute_spline)^2)^0.5
+
+#calculate the area under the difference curve
+
+spline_difference_frame$lag_spline_scaled_difference <- 
+  lag(spline_difference_frame$spline_scaled_difference)
+spline_difference_frame$lag_spline_absolute_difference <-
+  lag(spline_difference_frame$spline_absolute_difference)
+
+#calculate the area since the last time point. As we are always positive or zero, this will simply be the spline_knot_width x the average of the current time point and previous time point. 
+spline_difference_frame$area_of_scaled_since_last_time_point <-
+  spline_knot_width * (spline_difference_frame$lag_spline_scaled_difference + 
+                         spline_difference_frame$spline_scaled_difference)/2
+
+area_under_curve_scaled_difference <- 
+  sum(spline_difference_frame$area_of_scaled_since_last_time_point, na.rm=T)
+
+# do same for absolute
+spline_difference_frame$area_of_absolute_since_last_time_point <-
+  spline_knot_width * (spline_difference_frame$lag_spline_absolute_difference + 
+                         spline_difference_frame$spline_absolute_difference)/2
+
+area_under_curve_absolute_difference <- 
+  sum(spline_difference_frame$area_of_absolute_since_last_time_point, na.rm=T)
+
+#create the 17OHP to Androstenedione ratio, to find the best multiple to get androstenedione on the same scale and directly comparable
+#to do this we need to beind the two frames together
+
+#first get rid of the marker column and add the marker name to each column
+spline_model_fit_frame_17OHP$marker <- NULL
+colnames(spline_model_fit_frame_17OHP) <- 
+  paste0(colnames(spline_model_fit_frame_17OHP),"_17OHP")
+
+#remove the 17OHP from the first five colnames
+for (i in 1:7){
+colnames(spline_model_fit_frame_17OHP)[i] <- 
+  gsub(colnames(spline_model_fit_frame_17OHP)[i], pattern="_17OHP", replacement="")
+}
+
+#then do the same for the androstenedione frame
+spline_model_fit_frame_Androstenedione$marker <- NULL
+colnames(spline_model_fit_frame_Androstenedione) <- 
+  paste0(colnames(spline_model_fit_frame_Androstenedione),"_Androstenedione")
+
+#remove the Androstenedione from the first five colnames
+for (i in 1:7){
+colnames(spline_model_fit_frame_Androstenedione)[i] <- 
+  gsub(colnames(spline_model_fit_frame_Androstenedione)[i], pattern="_Androstenedione", replacement="")
+}
+
+#then we can join those frames together
+spline_model_fit_frames_joined <- left_join(
+  spline_model_fit_frame_17OHP, 
+  spline_model_fit_frame_Androstenedione,
+  by = c("id", 
+         "sex",
+         "age",
+         "visit_number", 
+         "visit_name",
+         "arm", 
+         "degrees_of_freedom", 
+         "time_of_test_hours_past_first_measurement_17OHP"="time_of_test_hours_past_first_measurement_Androstenedione"))
+
+#then within this joined frame, we can easily calculate the ratio, and later calculate any other related metrics also
+spline_model_fit_frames_joined$ratio_absolute_17OHP_to_Androstenedione <-
+  spline_model_fit_frames_joined$y_17OHP / 
+  spline_model_fit_frames_joined$y_Androstenedione
+
+mean_ratio_absolute_17OHP_to_Androstenedione <-
+  mean(spline_model_fit_frames_joined$ratio_absolute_17OHP_to_Androstenedione, na.rm=T)
+
+median_ratio_absolute_17OHP_to_Androstenedione <-
+  median(spline_model_fit_frames_joined$ratio_absolute_17OHP_to_Androstenedione, na.rm=T)
+
+sd_ratio_absolute_17OHP_to_Androstenedione <-
+  sd(spline_model_fit_frames_joined$ratio_absolute_17OHP_to_Androstenedione, na.rm=T)
+
+#now add our metrics to a frame
+single_patient_spline_fits_both_markers <- 
+  data.frame(id=each_patient,
+             
+             arm=arm_of_trial,
+             
+             sex=sex_of_patient,
+             
+             age=age_of_patient,
+             
+             visit_number=visit_number,
+             
+             visit_name=visit_name,
+             
+             days_beyond_baseline_visit=days_beyond_baseline_visit,
+             
+             degrees_of_freedom=degrees_of_freedom,
+             
+             marker=marker,
+             
+             n_17OHP=n_17OHP,
+             
+             n_Androstenedione=n_Androstenedione,
+             
+             area_under_curve_17OHP=area_under_curve_17OHP,
+             
+             area_under_curve_Androstenedione=area_under_curve_Androstenedione,
+             
+             ln_area_under_curve_17OHP=ln_area_under_curve_17OHP,
+             
+             ln_area_under_curve_Androstenedione=ln_area_under_curve_Androstenedione,
+             
+             mean_17OHP=mean_17OHP,
+             
+             mean_Androstenedione=mean_Androstenedione,
+             
+             sd_17OHP=sd_17OHP,
+             
+             sd_Androstenedione=sd_Androstenedione,
+             
+             ln_mean_17OHP=ln_mean_17OHP,
+             
+             ln_mean_Androstenedione=ln_mean_Androstenedione,
+             
+             ln_sd_17OHP=ln_sd_17OHP,
+             
+             ln_sd_Androstenedione=ln_sd_Androstenedione,
+             
+             mean_ln_17OHP=mean_ln_17OHP,
+             
+             mean_ln_Androstenedione=mean_ln_Androstenedione,
+             
+             sd_ln_17OHP=sd_ln_17OHP,
+             
+             sd_ln_Androstenedione=sd_ln_Androstenedione,
+             
+             geometric_mean_17OHP=geometric_mean_17OHP,
+             
+             geometric_mean_Androstenedione=geometric_mean_Androstenedione,
+             
+             geometric_sd_17OHP=geometric_sd_17OHP,
+             
+             geometric_sd_Androstenedione=geometric_sd_Androstenedione,
+             
+             gmd_17OHP=gmd_17OHP,
+             
+             gmd_Androstenedione=gmd_Androstenedione,
+             
+             gmd_ln_17OHP=gmd_ln_17OHP,
+             
+             gmd_ln_Androstenedione=gmd_ln_Androstenedione,
+             
+             mean_Androstenedione=mean_Androstenedione,
+             
+             coefficient_of_determination_17OHP=coefficient_of_determination_17OHP,
+             
+             coefficient_of_determination_Androstenedione=coefficient_of_determination_Androstenedione,
+             
+             min_non_negative_17OHP_spline_fit=min_non_negative_17OHP_spline_fit,
+             
+             min_non_negative_Androstenedione_spline_fit=min_non_negative_Androstenedione_spline_fit,
+             
+             min_non_negative_ln_17OHP_spline_fit=min_non_negative_ln_17OHP_spline_fit,
+             
+             min_non_negative_ln_Androstenedione_spline_fit=min_non_negative_ln_Androstenedione_spline_fit,
+             
+             max_non_negative_17OHP_spline_fit=max_non_negative_17OHP_spline_fit,
+             
+             max_non_negative_Androstenedione_spline_fit=max_non_negative_Androstenedione_spline_fit,
+             
+             max_non_negative_ln_17OHP_spline_fit=max_non_negative_ln_17OHP_spline_fit,
+             
+             max_non_negative_ln_Androstenedione_spline_fit=max_non_negative_ln_Androstenedione_spline_fit,
+             
+             sd_non_negative_17OHP_spline_fit=sd_non_negative_17OHP_spline_fit,
+             
+             sd_non_negative_Androstenedione_spline_fit=sd_non_negative_Androstenedione_spline_fit,
+             
+             sd_non_negative_ln_17OHP_spline_fit=sd_non_negative_ln_17OHP_spline_fit,
+             
+             sd_non_negative_ln_Androstenedione_spline_fit=sd_non_negative_ln_Androstenedione_spline_fit,
+             
+             area_under_curve_absolute_difference=area_under_curve_absolute_difference,
+             
+             area_under_curve_scaled_difference=area_under_curve_scaled_difference,
+             
+             mean_ratio_absolute_17OHP_to_Androstenedione,
+             
+             median_ratio_absolute_17OHP_to_Androstenedione,
+             
+             sd_ratio_absolute_17OHP_to_Androstenedione,
+             
+             max_17OHP_spline_to_max_Androstenedione_spline_ratio=max_17OHP_spline_to_max_Androstenedione_spline_ratio,
+             
+             max_17OHp_to_max_Androstenedione_Ratio=max_17OHp_to_max_Androstenedione_Ratio,
+             
+             total_number_of_peaks_17OHP=total_number_of_peaks_17OHP,
+             
+             total_number_of_troughs_17OHP=total_number_of_troughs_17OHP,
+             
+             time_at_first_peak_17OHP=time_at_first_peak_17OHP,
+             
+             value_at_first_peak_17OHP=value_at_first_peak_17OHP,
+             
+             time_at_second_peak_17OHP=time_at_second_peak_17OHP,
+             
+             value_at_second_peak_17OHP=value_at_second_peak_17OHP,
+             
+             time_at_third_peak_17OHP=time_at_third_peak_17OHP,
+             
+             value_at_third_peak_17OHP=value_at_third_peak_17OHP,
+             
+             time_at_fourth_peak_17OHP=time_at_fourth_peak_17OHP,
+             
+             value_at_fourth_peak_17OHP=value_at_fourth_peak_17OHP,
+             
+             time_at_fifth_peak_17OHP=time_at_fifth_peak_17OHP,
+             
+             value_at_fifth_peak_17OHP=value_at_fifth_peak_17OHP,
+             
+             time_at_sixth_peak_17OHP=time_at_sixth_peak_17OHP,
+             
+             value_at_sixth_peak_17OHP=value_at_sixth_peak_17OHP,
+             
+             time_at_seventh_peak_17OHP=time_at_seventh_peak_17OHP,
+             
+             value_at_seventh_peak_17OHP=value_at_seventh_peak_17OHP,
+             
+             time_at_eighth_peak_17OHP=time_at_eighth_peak_17OHP,
+             
+             value_at_eighth_peak_17OHP=value_at_eighth_peak_17OHP,
+             
+             time_at_ninth_peak_17OHP=time_at_ninth_peak_17OHP,
+             
+             value_at_ninth_peak_17OHP=value_at_ninth_peak_17OHP,
+             
+             time_at_tenth_peak_17OHP=time_at_tenth_peak_17OHP,
+             
+             value_at_tenth_peak_17OHP=value_at_tenth_peak_17OHP,
+             
+             time_at_first_trough_17OHP=time_at_first_trough_17OHP,
+             
+             value_at_first_trough_17OHP=value_at_first_trough_17OHP,
+             
+             time_at_second_trough_17OHP=time_at_second_trough_17OHP,
+             
+             value_at_second_trough_17OHP=value_at_second_trough_17OHP,
+             
+             time_at_third_trough_17OHP=time_at_third_trough_17OHP,
+             
+             value_at_third_trough_17OHP=value_at_third_trough_17OHP,
+             
+             time_at_fourth_trough_17OHP=time_at_fourth_trough_17OHP,
+             
+             value_at_fourth_trough_17OHP=value_at_fourth_trough_17OHP,
+             
+             time_at_fifth_trough_17OHP=time_at_fifth_trough_17OHP,
+             
+             value_at_fifth_trough_17OHP=value_at_fifth_trough_17OHP,
+             
+             time_at_sixth_trough_17OHP=time_at_sixth_trough_17OHP,
+             
+             value_at_sixth_trough_17OHP=value_at_sixth_trough_17OHP,
+             
+             time_at_seventh_trough_17OHP=time_at_seventh_trough_17OHP,
+             
+             value_at_seventh_trough_17OHP=value_at_seventh_trough_17OHP,
+             
+             time_at_eighth_trough_17OHP=time_at_eighth_trough_17OHP,
+             
+             value_at_eighth_trough_17OHP=value_at_eighth_trough_17OHP,
+             
+             time_at_ninth_trough_17OHP=time_at_ninth_trough_17OHP,
+             
+             value_at_ninth_trough_17OHP=value_at_ninth_trough_17OHP,
+             
+             time_at_tenth_trough_17OHP=time_at_tenth_trough_17OHP,
+             
+             value_at_tenth_trough_17OHP=value_at_tenth_trough_17OHP,
+             
+             total_number_of_peaks_Androstenedione=total_number_of_peaks_Androstenedione,
+             
+             total_number_of_troughs_Androstenedione=total_number_of_troughs_Androstenedione,
+             
+             time_at_first_peak_Androstenedione=time_at_first_peak_Androstenedione,
+             
+             value_at_first_peak_Androstenedione=value_at_first_peak_Androstenedione,
+             
+             time_at_second_peak_Androstenedione=time_at_second_peak_Androstenedione,
+             
+             value_at_second_peak_Androstenedione=value_at_second_peak_Androstenedione,
+             
+             time_at_third_peak_Androstenedione=time_at_third_peak_Androstenedione,
+             
+             value_at_third_peak_Androstenedione=value_at_third_peak_Androstenedione,
+             
+             time_at_fourth_peak_Androstenedione=time_at_fourth_peak_Androstenedione,
+             
+             value_at_fourth_peak_Androstenedione=value_at_fourth_peak_Androstenedione,
+             
+             time_at_fifth_peak_Androstenedione=time_at_fifth_peak_Androstenedione,
+             
+             value_at_fifth_peak_Androstenedione=value_at_fifth_peak_Androstenedione,
+             
+             time_at_sixth_peak_Androstenedione=time_at_sixth_peak_Androstenedione,
+             
+             value_at_sixth_peak_Androstenedione=value_at_sixth_peak_Androstenedione,
+             
+             time_at_seventh_peak_Androstenedione=time_at_seventh_peak_Androstenedione,
+             
+             value_at_seventh_peak_Androstenedione=value_at_seventh_peak_Androstenedione,
+             
+             time_at_eighth_peak_Androstenedione=time_at_eighth_peak_Androstenedione,
+             
+             value_at_eighth_peak_Androstenedione=value_at_eighth_peak_Androstenedione,
+             
+             time_at_ninth_peak_Androstenedione=time_at_ninth_peak_Androstenedione,
+             
+             value_at_ninth_peak_Androstenedione=value_at_ninth_peak_Androstenedione,
+             
+             time_at_tenth_peak_Androstenedione=time_at_tenth_peak_Androstenedione,
+             
+             value_at_tenth_peak_Androstenedione=value_at_tenth_peak_Androstenedione,
+             
+             time_at_first_trough_Androstenedione=time_at_first_trough_Androstenedione,
+             
+             value_at_first_trough_Androstenedione=value_at_first_trough_Androstenedione,
+             
+             time_at_second_trough_Androstenedione=time_at_second_trough_Androstenedione,
+             
+             value_at_second_trough_Androstenedione=value_at_second_trough_Androstenedione,
+             
+             time_at_third_trough_Androstenedione=time_at_third_trough_Androstenedione,
+             
+             value_at_third_trough_Androstenedione=value_at_third_trough_Androstenedione,
+             
+             time_at_fourth_trough_Androstenedione=time_at_fourth_trough_Androstenedione,
+             
+             value_at_fourth_trough_Androstenedione=value_at_fourth_trough_Androstenedione,
+             
+             time_at_fifth_trough_Androstenedione=time_at_fifth_trough_Androstenedione,
+             
+             value_at_fifth_trough_Androstenedione=value_at_fifth_trough_Androstenedione,
+             
+             time_at_sixth_trough_Androstenedione=time_at_sixth_trough_Androstenedione,
+             
+             value_at_sixth_trough_Androstenedione=value_at_sixth_trough_Androstenedione,
+             
+             time_at_seventh_trough_Androstenedione=time_at_seventh_trough_Androstenedione,
+             
+             value_at_seventh_trough_Androstenedione=value_at_seventh_trough_Androstenedione,
+             
+             time_at_eighth_trough_Androstenedione=time_at_eighth_trough_Androstenedione,
+             
+             value_at_eighth_trough_Androstenedione=value_at_eighth_trough_Androstenedione,
+             
+             time_at_ninth_trough_Androstenedione=time_at_ninth_trough_Androstenedione,
+             
+             value_at_ninth_trough_Androstenedione=value_at_ninth_trough_Androstenedione,
+             
+             time_at_tenth_trough_Androstenedione=time_at_tenth_trough_Androstenedione,
+             
+             value_at_tenth_trough_Androstenedione=value_at_tenth_trough_Androstenedione)
+         
+#then bind that to a frame with all of the metrics for all of the patients and all of the loops
+all_patient_spline_fits_both_markers <- 
+  rbind(
+    all_patient_spline_fits_both_markers, 
+    single_patient_spline_fits_both_markers)
+
+#then put all our spline fits and spline curve frames into approrpiate lists
+list_of_spline_curve_frames_Androstenedione[[length(list_of_spline_curve_frames_Androstenedione)+1]] <-
+  spline_model_fit_frame_Androstenedione
+
+list_of_spline_curve_frames_17OHP[[length(list_of_spline_curve_frames_17OHP)+1]] <- 
+  spline_model_fit_frame_17OHP
+
+list_of_visit_spline_fit_frames_Androstenedione[[length(list_of_visit_spline_fit_frames_Androstenedione)+1]] <- 
+  one_patient_Androstenedione_one_visit
+
+list_of_visit_spline_fit_frames_17OHP[[length(list_of_visit_spline_fit_frames_17OHP)+1]] <- 
+  one_patient_17OHP_one_visit
+
+list_of_spline_difference_frames[[length(list_of_spline_difference_frames)+1]] <- 
+  spline_difference_frame
+
+list_of_spline_model_fit_frames_joined[[length(list_of_spline_model_fit_frames_joined)+1]] <-
+  spline_model_fit_frames_joined
+
+print("finished rendering degrees of freedom =")
+print(degrees_of_freedom)
+print("for patient:")
+print(each_patient)
+print("for:")
+print(visit_name)
+
+}
+}
+}
+#give us an id_visit column 
+all_patient_spline_fits_both_markers$id_visit <-
+  paste0(all_patient_spline_fits_both_markers$id, 
+         "_",
+         all_patient_spline_fits_both_markers$visit_number)
+#print our spline fits of all patients collection to a csv file
+dir.create("efmody_spline_csv_outputs")
+write.csv(all_patient_spline_fits_both_markers, "./efmody_spline_csv_outputs/all_patient_spline_fits_both_markers.csv")
+
+print("This frequency frame should tell us everyone has 13 readings, otherwise there is a mistake somewhere (previously there was one rogue patient due to daylight saving:")
+freq(all_patient_spline_fits_both_markers$n_17OHP)
+```
+
+now we can take our lists and create large frames of what we want to plot
+outlook
+this allows us to just plot graphs, instead of iterating through all of the calculations each time which takes unnecessary computing power
+```{r, create giant spline frames}
+giant_spline_difference_frame <-
+  as.data.frame(do.call(rbind, list_of_spline_difference_frames))
+```
+
+
+```{r, create giant spline frames}
+giant_spline_fit_frame_17OHP <- 
+  as.data.frame(do.call(rbind, list_of_visit_spline_fit_frames_17OHP))
+```
+
+
+```{r, create giant spline frames}
+giant_spline_fit_frame_Androstenedione <- 
+  as.data.frame(do.call(rbind, list_of_visit_spline_fit_frames_Androstenedione))
+```
+
+
+```{r, create giant spline frames}
+giant_spline_curve_frame_Androstenedione <- 
+  as.data.frame(do.call(rbind, list_of_spline_curve_frames_Androstenedione))
+```
+
+
+```{r, create giant spline frames}
+giant_spline_curve_frame_17OHP <- 
+  as.data.frame(do.call(rbind, list_of_spline_curve_frames_17OHP))
+```
+
+
+```{r, create giant spline frames}
+giant_spline_model_fit_frame_joined <-
+  as.data.frame(do.call(rbind, list_of_spline_model_fit_frames_joined))
+```
+
+```{r, create a patient column in the serum data that will allow appropriate faceting}
+giant_spline_curve_frame_17OHP$patient <-
+  gsub(x=giant_spline_curve_frame_17OHP$id,
+       pattern="DIUR-005_",
+       replacement="")
+#do the same for Androstenedione
+giant_spline_curve_frame_Androstenedione$patient <-
+  gsub(x=giant_spline_curve_frame_Androstenedione$id,
+       pattern="DIUR-005_",
+       replacement="")
+```
+
+```{r, create a id paste visit column}
+giant_spline_curve_frame_17OHP$id_paste_visit <-
+  paste0(giant_spline_curve_frame_17OHP$id,
+       "_",
+       giant_spline_curve_frame_17OHP$visit_number)
+giant_spline_curve_frame_Androstenedione$id_paste_visit <-
+  paste0(giant_spline_curve_frame_Androstenedione$id,
+       "_",
+       giant_spline_curve_frame_Androstenedione$visit_number)
+```
+
+```{r, create a patient paste visit column in both saliva and serum to facilitate faceting}
+giant_spline_curve_frame_17OHP$patient_paste_visit <-
+  paste0(giant_spline_curve_frame_17OHP$patient,
+         "_",
+         giant_spline_curve_frame_17OHP$visit_number)
+giant_spline_curve_frame_Androstenedione$patient_paste_visit <-
+  paste0(giant_spline_curve_frame_17OHP$patient,
+         "_",
+         giant_spline_curve_frame_17OHP$visit_number)
+```
+
+```{r, create scalings in spline curves to allow plotting of saliva later on on similar scales}
+#create appropriate multiplication factors to get the 17OHp on a similar scale
+giant_spline_curve_frame_17OHP$non_negative_y_17OHP_times_10 <-
+  giant_spline_curve_frame_17OHP$non_negative_y_17OHP * 10
+#create appropriate multiplication factors to get the 17OHp on a similar scale
+giant_spline_curve_frame_Androstenedione$non_negative_y_Androstenedione_times_100 <-
+  giant_spline_curve_frame_Androstenedione$non_negative_y_Androstenedione * 100
+```
+
+
+```{r, create a patient paste visit column in both saliva and serum to facilitate faceting}
+giant_spline_curve_frame_17OHP$patient_paste_visit <-
+  paste0(giant_spline_curve_frame_17OHP$patient,
+         "_",
+         giant_spline_curve_frame_17OHP$visit_number)
+giant_spline_curve_frame_Androstenedione$patient_paste_visit <-
+  paste0(giant_spline_curve_frame_17OHP$patient,
+         "_",
+         giant_spline_curve_frame_17OHP$visit_number)
+```
+
+go to file_2.1 for rendering of spline graphs (take a long time)
+go to file_3 for summary statistics of all the splines
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+#we don't need to save steroid_profiles again, just take it from file 1
+rm(steroid_profiles)
+rm(patient_details)
+
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_2")
+```
+
+
+
+
+

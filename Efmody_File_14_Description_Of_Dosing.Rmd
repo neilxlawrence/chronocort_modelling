@@ -1,0 +1,995 @@
+
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles",
+                                   "dosing_frame_by_visit"))
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("all_patient_spline_fits_both_markers"))
+
+
+load_efmody_files_function(
+  previous_file_name="file_9",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("auc_total_rankings_across_all_visits"))
+
+```
+
+
+```{r, remove the patient visits 1 to 2 that were in the chronocort arm, because of them changing preparation}
+dosing_frame_by_visit_to_remove <-
+  subset(dosing_frame_by_visit, ARM=="Chronocort" & AVISITN==1)
+
+dosing_frame_by_visit_same_preparation <-
+  subset(dosing_frame_by_visit, !(id_visit %in% dosing_frame_by_visit_to_remove$id_visit))
+```
+
+
+```{r, joining dose and auc}
+#join our rankings of disease control to match the staggered spline curve plot to the dose patients are on at each visit
+steroid_profiles_to_make_long_bin_with_first_visit_chronocort <- 
+  left_join(dosing_frame_by_visit, 
+            auc_total_rankings_across_all_visits,
+            by = join_by(id))
+steroid_profiles_to_make_long_bin_without_first_visit_chronocort <- 
+  left_join(dosing_frame_by_visit_same_preparation, 
+            auc_total_rankings_across_all_visits,
+            by = join_by(id))
+
+#get rid of the superfluous columns with visits of 97 and 98
+
+steroid_profiles_to_make_long_bin_with_first_visit_chronocort <- subset(steroid_profiles_to_make_long_bin_with_first_visit_chronocort, AVISITN<5)
+steroid_profiles_to_make_long_bin_without_first_visit_chronocort <- subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, AVISITN<5)
+
+#order the frame in order of the 17OHP AUC
+
+steroid_profiles_to_make_long_bin_with_first_visit_chronocort <- 
+  steroid_profiles_to_make_long_bin_with_first_visit_chronocort[order(
+    steroid_profiles_to_make_long_bin_with_first_visit_chronocort$auc_ranking_17OHP),]
+steroid_profiles_to_make_long_bin_without_first_visit_chronocort <- 
+  steroid_profiles_to_make_long_bin_without_first_visit_chronocort[order(
+    steroid_profiles_to_make_long_bin_without_first_visit_chronocort$auc_ranking_17OHP),]
+```
+
+```{r, creating a long frame with each bin on a separate line}
+#make it longer, with each bin to have their dose 
+steroid_profiles_long_bin <-
+  pivot_longer(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, 
+               cols=c(
+                 hydrocortisone_equivalent_bin_a_at_visit,
+                 hydrocortisone_equivalent_bin_b_at_visit,
+                 hydrocortisone_equivalent_bin_c_at_visit,
+                 hydrocortisone_equivalent_bin_d_at_visit), 
+               names_to="bin_name",
+               values_to="hydrocortisone_equivalent")
+#give us a bin number so that we can plot a line at the top of the dose to link patients 
+steroid_profiles_long_bin$bin_number <- 
+  ifelse(steroid_profiles_long_bin$bin_name=="hydrocortisone_equivalent_bin_a_at_visit",
+         4,
+         NA)
+steroid_profiles_long_bin$bin_number <- 
+  ifelse(steroid_profiles_long_bin$bin_name=="hydrocortisone_equivalent_bin_b_at_visit",
+         3,
+         steroid_profiles_long_bin$bin_number)
+steroid_profiles_long_bin$bin_number <- 
+  ifelse(steroid_profiles_long_bin$bin_name=="hydrocortisone_equivalent_bin_c_at_visit",
+         2,
+         steroid_profiles_long_bin$bin_number)
+steroid_profiles_long_bin$bin_number <- 
+  ifelse(steroid_profiles_long_bin$bin_name=="hydrocortisone_equivalent_bin_d_at_visit",
+         1,
+         steroid_profiles_long_bin$bin_number)
+```
+
+```{r, separate the frame to facilitate summary stats}
+steroid_profiles_visit_1_without_chronocort <- 
+  subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, AVISITN==1)
+steroid_profiles_visit_1_with_chronocort <- 
+  subset(steroid_profiles_to_make_long_bin_with_first_visit_chronocort, AVISITN==1)
+steroid_profiles_visit_2 <- 
+  subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, AVISITN==2)
+steroid_profiles_visit_3 <- 
+  subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, AVISITN==3)
+steroid_profiles_visit_4 <- 
+  subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, AVISITN==4)
+
+steroid_profiles_visit_1_without_chronocort_chronocort_arm <- 
+  subset(steroid_profiles_visit_1_without_chronocort, ARM=="Chronocort")
+steroid_profiles_visit_1_with_chronocort_chronocort_arm <- 
+  subset(steroid_profiles_visit_1_with_chronocort, ARM=="Chronocort")
+steroid_profiles_visit_2_chronocort_arm <- 
+  subset(steroid_profiles_visit_2, ARM=="Chronocort")
+steroid_profiles_visit_3_chronocort_arm <- 
+  subset(steroid_profiles_visit_3, ARM=="Chronocort")
+steroid_profiles_visit_4_chronocort_arm <- 
+  subset(steroid_profiles_visit_4, ARM=="Chronocort")
+
+steroid_profiles_visit_1_without_chronocort_standard_arm <- 
+  subset(steroid_profiles_visit_1_without_chronocort, ARM=="Standard GC therapy")
+steroid_profiles_visit_1_with_chronocort_standard_arm <- 
+  subset(steroid_profiles_visit_1_with_chronocort, ARM=="Standard GC therapy")
+steroid_profiles_visit_2_standard_arm <- 
+  subset(steroid_profiles_visit_2, ARM=="Standard GC therapy")
+steroid_profiles_visit_3_standard_arm <- 
+  subset(steroid_profiles_visit_3, ARM=="Standard GC therapy")
+steroid_profiles_visit_4_standard_arm <- 
+  subset(steroid_profiles_visit_4, ARM=="Standard GC therapy")
+
+```
+
+```{r, summary stats of dose bins and total doses into text file}
+sink("summary_stats_of_dose_bins.txt")
+descr(steroid_profiles_visit_1_without_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+print("note, we don't have the binned values for visit 1")
+#descr(steroid_profiles_visit_1_without_chronocort$hydrocortisone_equivalent_bin_a_at_visit)
+
+print("visit 2")
+
+descr(steroid_profiles_visit_2$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_2$hydrocortisone_equivalent_bin_a_at_visit)
+descr(steroid_profiles_visit_2$hydrocortisone_equivalent_bin_b_at_visit)
+descr(steroid_profiles_visit_2$hydrocortisone_equivalent_bin_c_at_visit)
+descr(steroid_profiles_visit_2$hydrocortisone_equivalent_bin_d_at_visit)
+
+print("visit 3")
+
+descr(steroid_profiles_visit_3$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_3$hydrocortisone_equivalent_bin_a_at_visit)
+descr(steroid_profiles_visit_3$hydrocortisone_equivalent_bin_b_at_visit)
+descr(steroid_profiles_visit_3$hydrocortisone_equivalent_bin_c_at_visit)
+descr(steroid_profiles_visit_3$hydrocortisone_equivalent_bin_d_at_visit)
+
+print("visit 4")
+
+descr(steroid_profiles_visit_4$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_4$hydrocortisone_equivalent_bin_a_at_visit)
+descr(steroid_profiles_visit_4$hydrocortisone_equivalent_bin_b_at_visit)
+descr(steroid_profiles_visit_4$hydrocortisone_equivalent_bin_c_at_visit)
+descr(steroid_profiles_visit_4$hydrocortisone_equivalent_bin_d_at_visit)
+sink()
+```
+
+```{r, violin plots of total dose in patients overall}
+#the visit is already in long format
+total_dose_violin_plot <-
+  ggplot(data=steroid_profiles_to_make_long_bin_without_first_visit_chronocort, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot
+
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot + themepowerpoint, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot + themeblankwithaxes, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/total_dose_stats.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 1")
+descr(steroid_profiles_visit_1_with_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_2$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_3$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_4$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+
+```{r, violin plots of total dose in patients overall, including first visit where they change preparation}
+#the visit is already in long format
+total_dose_violin_plot_first_visit_included <-
+  ggplot(data=dosing_frame_by_visit, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=ARM), alpha=0.3) +
+  scale_colour_manual(values=c("maroon", "grey", "grey", "black")) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_first_visit_included
+
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot_first_visit_included", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_first_visit_included + themepowerpoint, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_first_visit_included", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_first_visit_included + themeblankwithaxes, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/total_dose_stats.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_2$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_3$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_4$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+```{r, violin plots of total dose in standard arm}
+#the visit is already in long format
+total_dose_violin_plot_standard_arm <-
+  ggplot(data=subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, ARM=="Standard GC therapy"), 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_standard_arm
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot_standard_arm", ".tif"), 
+       path="./dose_plots/violin_plots", 
+       plot = total_dose_violin_plot_standard_arm + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_standard_arm", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_standard_arm + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/standard_arm_stats.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_1_without_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_1_without_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_1_without_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+
+```{r, violin plots of total dose in standard arm first and last}
+#the visit is already in long format
+total_dose_violin_plot_standard_arm_first_and_last <-
+  ggplot(data=subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, 
+                     ARM=="Standard GC therapy" &
+                       AVISITN==1 |
+                       ARM=="Standard GC therapy" &
+                       AVISITN==4 ), 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_standard_arm_first_and_last
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot_standard_arm_first_and_last", ".tif"), 
+       path="./dose_plots/violin_plots", 
+       plot = total_dose_violin_plot_standard_arm_first_and_last + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_standard_arm_first_and_last", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_standard_arm_first_and_last + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+
+```{r, violin plots of total dose in chronocort arm}
+#the visit is already in long format
+total_dose_violin_plot_chronocort <-
+  ggplot(data=subset(steroid_profiles_to_make_long_bin_without_first_visit_chronocort, ARM=="Chronocort"), 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_chronocort
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot_chronocort", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_chronocort + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_chronocort", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_chronocort + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/chronocort_arm_stats.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+
+
+```{r, violin plots of total dose in chronocort arm including first visit where they change preparation}
+#the visit is already in long format
+total_dose_violin_plot_chronocort_first_visit_included <-
+  ggplot(data=subset(dosing_frame_by_visit, ARM=="Chronocort"), 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_chronocort_first_visit_included
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot_chronocort_first_visit_included", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_chronocort_first_visit_included + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_chronocort_first_visit_included", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_chronocort_first_visit_included + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/chronocort_arm_stats.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+
+```{r, violin plots of total dose in chronocort arm including first visit where they change preparation first and last visits}
+#the visit is already in long format
+total_dose_violin_plot_chronocort_first_and_last <-
+  ggplot(data=subset(dosing_frame_by_visit, 
+                     ARM=="Chronocort" &
+                     AVISITN==1 |
+                     ARM=="Chronocort" &
+                     AVISITN==4
+                     ), 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_chronocort_first_and_last
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_violin_plot_chronocort_first_and_last", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_chronocort_first_and_last + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_chronocort_first_and_last", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_violin_plot_chronocort_first_and_last + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+```
+
+
+
+
+```{r, dose change summary stats}
+#within dosing_frame_by_visit_same_preparation
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/dose_change_summary_stats.txt")
+print("total number of paired visits:")
+sum(!is.na(dosing_frame_by_visit_same_preparation$total_increase_from_previous_visit))
+freq(dosing_frame_by_visit_same_preparation$total_increase_from_previous_visit)
+freq(dosing_frame_by_visit_same_preparation$total_maintained_from_previous_visit)
+freq(dosing_frame_by_visit_same_preparation$total_decrease_from_previous_visit)
+
+freq(dosing_frame_by_visit_same_preparation$total_increase_from_two_visits_ago)
+freq(dosing_frame_by_visit_same_preparation$total_maintained_from_two_visits_ago)
+freq(dosing_frame_by_visit_same_preparation$total_decrease_from_two_visits_ago)
+
+freq(dosing_frame_by_visit_same_preparation$total_increase_from_three_visits_ago)
+freq(dosing_frame_by_visit_same_preparation$total_maintained_from_three_visits_ago)
+freq(dosing_frame_by_visit_same_preparation$total_decrease_from_three_visits_ago)
+
+print("we have to remember that people in the chronocort arm between visit 1 and visit 2 change preparation")
+
+sink()
+
+#to visualise the dose changes, I want the values that have a dose increase from previous visit, but also 
+dosing_increases <- subset(
+  dosing_frame_by_visit_same_preparation, total_increase_at_next_visit==1 | total_increase_from_previous_visit==1)
+
+dosing_maintained <- subset(
+  dosing_frame_by_visit_same_preparation, total_maintained_at_next_visit==1 | total_maintained_from_previous_visit==1)
+
+dosing_decreases <- subset(
+  dosing_frame_by_visit_same_preparation, total_decreased_at_next_visit==1 | total_decrease_from_previous_visit==1)
+```
+
+
+```{r, total_dose_increases_violin_plot}
+total_dose_increases_violin_plot <-
+  ggplot(data=dosing_increases, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text", x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation$total_increase_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_increases_violin_plot
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_increases_violin_plot", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_increases_violin_plot + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_increases_violin_plot", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_increases_violin_plot + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+
+
+```{r, total_dose_maintained_violin_plot - note that the code is over simple and still draws a line between the increases or decreases in visit 2 to 3, because those points are being used for maintenance doses}
+total_dose_maintained_violin_plot <-
+  ggplot(data=dosing_maintained, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text" , x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation$total_maintained_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_maintained_violin_plot
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_maintained_violin_plot", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_maintained_violin_plot + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_maintained_violin_plot", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_maintained_violin_plot + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+
+```{r, total_dose_decreased_violin_plot}
+total_dose_decreased_violin_plot <-
+  ggplot(data=dosing_decreases, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text" , x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation$total_decreased_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_decreased_violin_plot
+dir.create("dose_plots/violin_plots")
+ggsave(filename=paste0("total_dose_decreased_violin_plot", ".tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_decreased_violin_plot + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_decreased_violin_plot", "_blank.tif"), 
+       path="./dose_plots/violin_plots/", 
+       plot = total_dose_decreased_violin_plot + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+
+************************
+render those just in the chronocort arm
+************************
+
+```{r, subset to just chronocort arm}
+dosing_frame_by_visit_same_preparation_chronocort_arm <- subset(
+  dosing_frame_by_visit_same_preparation, ARM=="Chronocort")
+```
+
+```{r, violin plots of total dose in patients chronocort arm}
+#the visit is already in long format
+total_dose_violin_plot_chronocort_arm <-
+  ggplot(data=dosing_frame_by_visit_same_preparation_chronocort_arm, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_chronocort_arm
+
+dir.create("dose_plots/violin_plots/chronocort_arm")
+ggsave(filename=paste0("total_dose_violin_plot_chronocort_arm", ".tif"), 
+       path="./dose_plots/violin_plots/chronocort_arm/", 
+       plot = total_dose_violin_plot_chronocort_arm + themepowerpoint, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_chronocort_arm", "_blank.tif"), 
+       path="./dose_plots/violin_plots/chronocort_arm/", 
+       plot = total_dose_violin_plot_chronocort_arm + themeblankwithaxes, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/total_dose_stats_chronocort_arm.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_2_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_3_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_4_chronocort_arm$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+
+
+```{r, dose change summary stats}
+#within dosing_frame_by_visit_same_preparation_chronocort_arm
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/dose_change_summary_stats_chronocort.txt")
+print("total number of paired visits:")
+sum(!is.na(dosing_frame_by_visit_same_preparation_chronocort_arm$total_increase_at_next_visit))
+#note with these, we don't want to count the number increased from previous visit, because that will also count the number that changed from 1 to 2 in the chronocort arm
+freq(dosing_frame_by_visit_same_preparation_chronocort_arm$total_increase_at_next_visit)
+freq(dosing_frame_by_visit_same_preparation_chronocort_arm$total_maintained_at_next_visit)
+freq(dosing_frame_by_visit_same_preparation_chronocort_arm$total_decreased_at_next_visit)
+
+print("we have to remember that people in the chronocort arm between visit 1 and visit 2 change preparation")
+
+sink()
+
+#to visualise the dose changes, I want the values that have a dose increase from previous visit, but also 
+dosing_increases_chronocort <- subset(
+  dosing_frame_by_visit_same_preparation_chronocort_arm, 
+  total_increase_at_next_visit==1 | total_increase_from_previous_visit==1)
+
+dosing_maintained_chronocort <- subset(
+  dosing_frame_by_visit_same_preparation_chronocort_arm, 
+  total_maintained_at_next_visit==1 | total_maintained_from_previous_visit==1)
+
+dosing_decreases_chronocort <- subset(
+  dosing_frame_by_visit_same_preparation_chronocort_arm, 
+  total_decreased_at_next_visit==1 | total_decrease_from_previous_visit==1)
+```
+
+
+```{r, total_dose_increases_violin_plot_chronocort}
+total_dose_increases_violin_plot_chronocort <-
+  ggplot(data=dosing_increases_chronocort, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text", x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation_chronocort_arm$total_increase_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_increases_violin_plot_chronocort
+dir.create("dose_plots/violin_plots/chronocort_arm")
+ggsave(filename=paste0("total_dose_increases_violin_plot_chronocort", ".tif"), 
+       path="./dose_plots/violin_plots/chronocort_arm/", 
+       plot = total_dose_increases_violin_plot_chronocort + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_increases_violin_plot_chronocort", "_blank.tif"), 
+       path="./dose_plots/violin_plots/chronocort_arm/", 
+       plot = total_dose_increases_violin_plot_chronocort + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+
+
+```{r, total_dose_decreased_violin_plot}
+total_dose_decreased_violin_plot <-
+  ggplot(data=dosing_decreases_chronocort, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text" , x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation_chronocort_arm$total_decreased_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_decreased_violin_plot
+dir.create("dose_plots/violin_plots/chronocort_arm")
+ggsave(filename=paste0("total_dose_decreased_violin_plot", ".tif"), 
+       path="./dose_plots/violin_plots/chronocort_arm/", 
+       plot = total_dose_decreased_violin_plot + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_decreased_violin_plot", "_blank.tif"), 
+       path="./dose_plots/violin_plots/chronocort_arm/", 
+       plot = total_dose_decreased_violin_plot + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+
+*****************************
+render those just in the standard therapy arm
+**************************
+
+```{r, sbuset to just standard arm}
+dosing_frame_by_visit_same_preparation_standard_arm <- subset(
+  dosing_frame_by_visit_same_preparation, ARM=="Standard GC therapy")
+```
+
+```{r, violin plots of total dose in patients standard arm}
+#the visit is already in long format
+total_dose_violin_plot_standard_arm <-
+  ggplot(data=dosing_frame_by_visit_same_preparation_standard_arm, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_violin_plot_standard_arm
+
+dir.create("dose_plots/violin_plots/standard_arm")
+ggsave(filename=paste0("total_dose_violin_plot_standard_arm", ".tif"), 
+       path="./dose_plots/violin_plots/standard_arm/", 
+       plot = total_dose_violin_plot_standard_arm + themepowerpoint, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_violin_plot_standard_arm", "_blank.tif"), 
+       path="./dose_plots/violin_plots/standard_arm/", 
+       plot = total_dose_violin_plot_standard_arm + themeblankwithaxes, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/total_dose_stats_standard_arm.txt")
+print("visit 1")
+descr(steroid_profiles_visit_1_without_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+descr(steroid_profiles_visit_1_with_chronocort_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 2")
+descr(steroid_profiles_visit_2_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 3")
+descr(steroid_profiles_visit_3_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+print("visit 4")
+descr(steroid_profiles_visit_4_standard_arm$total_daily_hydrocortisone_equivalent_at_visit)
+sink()
+```
+
+```{r, dose change summary stats}
+#within dosing_frame_by_visit_same_preparation_standard_arm
+dir.create("dose_plots/violin_plots/accompanying_stats")
+sink("dose_plots/violin_plots/accompanying_stats/dose_change_summary_stats_standard.txt")
+print("total number of paired visits:")
+sum(!is.na(dosing_frame_by_visit_same_preparation_standard_arm$total_increase_from_previous_visit))
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_increase_from_previous_visit)
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_maintained_from_previous_visit)
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_decrease_from_previous_visit)
+
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_increase_from_two_visits_ago)
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_maintained_from_two_visits_ago)
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_decrease_from_two_visits_ago)
+
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_increase_from_three_visits_ago)
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_maintained_from_three_visits_ago)
+freq(dosing_frame_by_visit_same_preparation_standard_arm$total_decrease_from_three_visits_ago)
+
+print("we have to remember that people in the standard arm between visit 1 and visit 2 change preparation")
+
+sink()
+
+#to visualise the dose changes, I want the values that have a dose increase from previous visit, but also 
+dosing_increases_standard <- subset(
+  dosing_frame_by_visit_same_preparation_standard_arm, 
+  total_increase_at_next_visit==1 | total_increase_from_previous_visit==1)
+
+dosing_maintained_standard <- subset(
+  dosing_frame_by_visit_same_preparation_standard_arm, 
+  total_maintained_at_next_visit==1 | total_maintained_from_previous_visit==1)
+
+dosing_decreases_standard <- subset(
+  dosing_frame_by_visit_same_preparation_standard_arm, 
+  total_decreased_at_next_visit==1 | total_decrease_from_previous_visit==1)
+```
+
+```{r, total_dose_increases_violin_plot_standard}
+total_dose_increases_violin_plot_standard <-
+  ggplot(data=dosing_increases_standard, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text", x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation_standard_arm$total_increase_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_increases_violin_plot_standard
+dir.create("dose_plots/violin_plots/standard_arm")
+ggsave(filename=paste0("total_dose_increases_violin_plot_standard", ".tif"), 
+       path="./dose_plots/violin_plots/standard_arm/", 
+       plot = total_dose_increases_violin_plot_standard + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_increases_violin_plot_standard", "_blank.tif"), 
+       path="./dose_plots/violin_plots/standard_arm/", 
+       plot = total_dose_increases_violin_plot_standard + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, total_dose_decreased_violin_plot}
+total_dose_decreased_violin_plot <-
+  ggplot(data=dosing_decreases_standard, 
+         aes(x=visit_name, 
+             y=total_daily_hydrocortisone_equivalent_at_visit)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_line(aes(group=id, colour=SEX), alpha=0.3) +
+  annotate(size=14, geom="text" , x = 1, y = 60,   
+           label = paste0(
+             "n=",
+             sum(dosing_frame_by_visit_same_preparation_standard_arm$total_decreased_at_next_visit, na.rm=T))) +
+  geom_dotplot(aes(x=visit_name,
+                   y=total_daily_hydrocortisone_equivalent_at_visit),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 1,
+               stackratio = 1,
+               fill="white",
+               dotsize=0.9) + coord_cartesian(ylim=c(0,70))
+total_dose_decreased_violin_plot
+dir.create("dose_plots/violin_plots/standard_arm")
+ggsave(filename=paste0("total_dose_decreased_violin_plot", ".tif"), 
+       path="./dose_plots/violin_plots/standard_arm/", 
+       plot = total_dose_decreased_violin_plot + themepowerpoint , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("total_dose_decreased_violin_plot", "_blank.tif"), 
+       path="./dose_plots/violin_plots/standard_arm/", 
+       plot = total_dose_decreased_violin_plot + themeblankwithaxes , 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+auc_total_rankings_across_all_visits <- NULL
+all_patient_spline_fits_both_markers <- NULL
+dosing_frame_by_visit <- NULL
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_14")
+```
+

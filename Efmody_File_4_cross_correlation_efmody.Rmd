@@ -1,0 +1,417 @@
+
+clear environment and load packages
+
+```{r, load packages}
+rm(list=ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=
+    list(
+      "patient_details", 
+      "steroid_profiles"))
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("all_patient_spline_fits_both_markers"))
+
+```
+
+
+```{r, make the steroid_profiles wide}
+
+steroid_profiles_without_screen_failure <-
+  subset(steroid_profiles, ARM!="Screen Failure" & ARM!="Not Assigned")
+
+steroid_profiles_without_screen_failure_to_make_wide <-
+  steroid_profiles_without_screen_failure[,c("id", "AVISITN", "ATPTN", "PARAM", "AVAL")]
+#make an id visit column
+steroid_profiles_without_screen_failure_to_make_wide$id_visit <-
+  paste0(steroid_profiles_without_screen_failure_to_make_wide$id, "_visit_", steroid_profiles_without_screen_failure_to_make_wide$AVISITN)
+
+steroid_profiles_without_screen_failure_to_make_wide_androstenedione <- subset (steroid_profiles_without_screen_failure_to_make_wide, 
+                                         PARAM=="Androstenedione/ SI (nmol/L)")
+steroid_profiles_without_screen_failure_to_make_wide_androstenedione$ln_nM_Androstenedione <- 
+  log(steroid_profiles_without_screen_failure_to_make_wide_androstenedione$AVAL)
+
+steroid_profiles_without_screen_failure_to_make_wide_17OHP <- subset (steroid_profiles_without_screen_failure_to_make_wide, 
+                                         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)")
+steroid_profiles_without_screen_failure_to_make_wide_17OHP$ln_nM_17OHP <- 
+  log(steroid_profiles_without_screen_failure_to_make_wide_17OHP$AVAL)
+
+#we can now drop the columns of marker and value
+drop <- c("id", "AVISITN", "AVAL", "PARAM")
+steroid_profiles_without_screen_failure_to_make_wide_androstenedione <- 
+  steroid_profiles_without_screen_failure_to_make_wide_androstenedione[,!(names(steroid_profiles_without_screen_failure_to_make_wide_androstenedione) %in% drop)]
+steroid_profiles_without_screen_failure_to_make_wide_17OHP <- 
+  steroid_profiles_without_screen_failure_to_make_wide_17OHP[,!(names(steroid_profiles_without_screen_failure_to_make_wide_17OHP) %in% drop)]
+
+
+steroid_profiles_wide_ln_values_17OHP <- 
+  pivot_wider(steroid_profiles_without_screen_failure_to_make_wide_17OHP, names_from = ATPTN, values_from = ln_nM_17OHP)
+colnames(steroid_profiles_wide_ln_values_17OHP) <- 
+  paste("ln_nM_17OHP", colnames(steroid_profiles_wide_ln_values_17OHP), sep="_")
+#repair the first column
+names(steroid_profiles_wide_ln_values_17OHP)[names(steroid_profiles_wide_ln_values_17OHP)=="ln_nM_17OHP_id_visit"] <- 
+  "id_visit"
+
+steroid_profiles_wide_ln_values_Androstenedione <- 
+  pivot_wider(steroid_profiles_without_screen_failure_to_make_wide_androstenedione, names_from = ATPTN, values_from = ln_nM_Androstenedione)
+colnames(steroid_profiles_wide_ln_values_Androstenedione) <- 
+  paste("ln_nM_Androstenedione", colnames(steroid_profiles_wide_ln_values_Androstenedione), sep="_")
+#repair the first column
+names(steroid_profiles_wide_ln_values_Androstenedione)[names(steroid_profiles_wide_ln_values_Androstenedione)=="ln_nM_Androstenedione_id_visit"] <-
+  "id_visit"
+
+steroid_profiles_wide_ln_values <- 
+  left_join(steroid_profiles_wide_ln_values_17OHP, steroid_profiles_wide_ln_values_Androstenedione, by = join_by(id_visit))
+
+#then the id_visit was previously the rowname, not a column on it's own
+steroid_profiles_wide_ln_values_rownames <- as.data.frame(steroid_profiles_wide_ln_values[,-1])
+rownames(steroid_profiles_wide_ln_values_rownames) <- (steroid_profiles_wide_ln_values$id_visit)
+steroid_profiles_wide_ln_values_nona <- na.omit(steroid_profiles_wide_ln_values_rownames)
+str(steroid_profiles_wide_ln_values_nona)
+```
+
+
+```{r, take out spline summary data of patients in the trial at a certain degrees of freedom}
+spline_summary_data_both_markers <-
+  all_patient_spline_fits_both_markers %>%
+  filter(arm!="Screen Failure") %>%
+  filter(degrees_of_freedom==10)
+#create id_visit_number for rownames
+rownames(spline_summary_data_both_markers) <- 
+  paste0(spline_summary_data_both_markers$id,
+         "_visit_",
+         spline_summary_data_both_markers$visit_number)
+#spline_summary_data_both_markers <- 
+#  rownames_to_column(spline_summary_data_both_markers, "id_visit")
+```
+
+```{r, shaping our data into the format suitable for cross correlation analysis}
+steroid_profiles_ln_Androstenedione <-
+  as.data.frame(na.omit(steroid_profiles_wide_ln_values_Androstenedione))
+
+rownames(steroid_profiles_ln_Androstenedione) <- as.vector(steroid_profiles_ln_Androstenedione[,1])
+
+steroid_profiles_ln_Androstenedione <- (steroid_profiles_ln_Androstenedione[,-1])
+
+steroid_profiles_ln_Androstenedione_matrix <- 
+  as.matrix(steroid_profiles_ln_Androstenedione)
+nrow(steroid_profiles_ln_Androstenedione)
+
+steroid_profiles_ln_17OHP <- 
+  as.data.frame(na.omit(steroid_profiles_wide_ln_values_17OHP))
+rownames(steroid_profiles_ln_17OHP) <- 
+  as.vector(steroid_profiles_ln_17OHP[,1])
+steroid_profiles_ln_17OHP <- 
+  (steroid_profiles_ln_17OHP[,-1])
+steroid_profiles_ln_17OHP_matrix <- 
+  as.matrix(steroid_profiles_ln_17OHP)
+nrow(steroid_profiles_ln_17OHP)
+```
+
+```{r}
+ccf(as.numeric(steroid_profiles_ln_Androstenedione[1,]), 
+    as.numeric(steroid_profiles_ln_17OHP[1,]), 
+    lag.max=8)
+
+ccf_object <- ccf(as.numeric(steroid_profiles_ln_Androstenedione[1,]), 
+    as.numeric(steroid_profiles_ln_17OHP[1,]), 
+    plot=F,
+    type="correlation")
+
+```
+
+each row is one patient visit that way. I want to pull out the points of that graph, then repeat for every single number of rows
+
+our x coordinates are:
+ccf_object$lag
+
+our y coordinates are
+ccf_object$acf
+
+```{r}
+cross_correlation_data <- 
+  data.frame(x=ccf_object$lag,
+             y=ccf_object$acf)
+
+best_cross_correlation_time_point <-
+  cross_correlation_data %>%
+  slice_max(y, n=1, with_ties = F)
+```
+
+create a loop
+
+```{r}
+#create an empty frame to bind all points to:
+all_study_patient_ccf_points <- data.frame(NULL)
+#set maximum lag first - default for R would be 8 from 13 readings
+for (lag_max_allowed in 1:13){
+ccf_points <- data.frame(NULL)
+best_lag_points <- data.frame(NULL)
+for (i in 1:nrow(steroid_profiles_ln_17OHP)){
+  
+  ccf_object <- 
+    ccf(
+      as.numeric(steroid_profiles_ln_Androstenedione[i,]), 
+      as.numeric(steroid_profiles_ln_17OHP[i,]),
+      lag.max=lag_max_allowed, 
+      plot=F,
+      type="correlation")
+  
+  #collect all the individual cross correlation points
+  ccf_points_to_add <-
+    data.frame(
+      id_visit=rownames(steroid_profiles_ln_Androstenedione[i,],),
+      lag_max_allowed = lag_max_allowed,
+      lag=ccf_object$lag,
+      cross_correlation_function=ccf_object$acf
+    )
+  
+
+  ccf_points_to_add$cross_correlation_function <- ifelse(
+    ccf_points_to_add$cross_correlation_function=="NaN", 
+    1,
+    ccf_points_to_add$cross_correlation_function
+  )
+  
+  #collect the winning cross correlation lag for each patients' visit
+  best_cross_correlation_time_point_to_add <- 
+    data.frame(id_visit=rownames(steroid_profiles_ln_Androstenedione[i,],))
+  
+  best_cross_correlation_time_point_to_add <-
+    ccf_points_to_add %>%
+    slice_max(cross_correlation_function, n=1, with_ties = F)
+  
+  best_cross_correlation_time_point_to_add$lag_max_allowed <- lag_max_allowed
+  
+  ccf_points <- rbind (ccf_points, ccf_points_to_add)
+  best_lag_points <- rbind (best_lag_points, best_cross_correlation_time_point_to_add)
+
+  }
+
+#pull out id from id_visit
+ccf_points$id <- gsub(x=ccf_points$id_visit,
+                      pattern="_visit.*",
+                      replacement="")
+
+#pull out visit from id_visit
+ccf_points$visit <- gsub(x=ccf_points$id_visit,
+                      pattern=".*visit_",
+                      replacement="")
+
+
+ccf_points_with_arm <- left_join(
+  ccf_points,
+  patient_details,
+  by = join_by(id)
+)
+
+ccf_points_with_arm_for_summary <- 
+  subset(ccf_points_with_arm, cross_correlation_function!="NaN")
+
+#turn the lag into a factor so it can be grouped
+ccf_points_with_arm_for_summary$lag <-
+  as.character(ccf_points_with_arm_for_summary$lag)
+
+ccf_points_summary <- 
+  ccf_points_with_arm_for_summary %>%
+  group_by(lag) %>%
+  dplyr::summarise(
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+    
+ccf_points_summary_chronocort <- 
+  ccf_points_with_arm_for_summary %>%
+  filter(ARM=="Chronocort" & visit>1) %>%
+  group_by(lag) %>%
+  dplyr::summarise(
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+        
+ccf_points_summary_standard_therapy <- 
+  ccf_points_with_arm_for_summary %>%
+  filter(ARM=="Standard GC therapy" |
+         ARM=="Chronocort" & visit==1) %>%
+  group_by(lag) %>%
+  dplyr::summarise(
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+
+#now make the lag a number again so it can get plotted
+ccf_points_summary$lag <- 
+  as.numeric(ccf_points_summary$lag)
+
+ccf_points_summary_chronocort$lag <- 
+  as.numeric(ccf_points_summary_chronocort$lag)
+
+ccf_points_summary_standard_therapy$lag <-
+  as.numeric(ccf_points_summary_standard_therapy$lag)
+
+colour_cross_correlation_plot <- 
+  ggplot() + 
+  geom_line(data=ccf_points_with_arm,
+                      aes(x=lag, y=cross_correlation_function, 
+                          colour=ARM,
+                          group=id_visit),
+            alpha=0.2) +
+  geom_point(data=ccf_points_summary_chronocort,
+             aes(x=lag, y=median),
+             colour="red",
+             size=3,
+             alpha=0.8) +
+  geom_point(data=ccf_points_summary_standard_therapy,
+             aes(x=lag, y=median),
+             colour="blue",
+             size=3,
+             alpha=0.8) +
+  geom_line(data=ccf_points_summary_chronocort,
+             aes(x=lag, y=median),
+             colour="red",
+             size=2,
+             alpha=0.8)+
+  geom_line(data=ccf_points_summary_standard_therapy,
+             aes(x=lag, y=median),
+             colour="blue",
+             size=2,
+             alpha=0.8)+
+  geom_errorbar(data=ccf_points_summary_chronocort, 
+                aes(x=lag,
+                    ymin=Q1, 
+                    ymax=Q3),
+                colour="red",
+                width=0.5,
+                cex=1,
+             alpha=0.8)+ 
+  geom_errorbar(data=ccf_points_summary_standard_therapy, 
+                aes(x=lag,
+                    ymin=Q1, 
+                    ymax=Q3),
+                colour="blue",
+                width=0.5,
+                cex=1,
+             alpha=0.8)+ 
+  labs(title="Crosscorrelation Function of log Androstenedione vs 17OHP"
+  ,
+  subtitle="Blue = Standard Therapy arm, Red = Chronocort arm",
+        x="Hour lag between markers", y="Cross Correlation Function") +
+  themewithlegend
+colour_cross_correlation_plot
+
+black_and_white_cross_correlation_plot <- 
+  ggplot() + 
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_line(data=ccf_points_with_arm,
+                      aes(x=lag, y=cross_correlation_function, 
+                          group=id_visit),
+            alpha=0.2) +
+  geom_point(data=ccf_points_summary,
+             aes(x=lag, y=median),
+             colour="grey",
+             size=3,
+             alpha=0.8)+
+  geom_line(data=ccf_points_summary,
+             aes(x=lag, y=median),
+             colour="grey",
+             size=2,
+             alpha=0.8)+
+  geom_errorbar(data=ccf_points_summary, 
+                aes(x=lag,
+                    ymin=Q1, 
+                    ymax=Q3),
+                colour="grey",
+                width=0.5,
+                cex=1,
+             alpha=0.8)+ 
+
+  labs(title="Crosscorrelation Function of log Androstenedione vs 17OHP"
+  , 
+        x="Hour lag between markers", y="Cross Correlation Function") +
+  themewithlegend
+black_and_white_cross_correlation_plot
+
+dir.create("cross_correlation_data_for_plots")
+write.csv(ccf_points, paste0("cross_correlation_data_for_plots/ccf_points_lag_max_allowed_", lag_max_allowed, ".csv"))
+#also put all the ccf_points into one frame to plot later alongside the normative data
+all_study_patient_ccf_points <- rbind(all_study_patient_ccf_points, ccf_points)
+
+write.csv(best_lag_points, paste0("cross_correlation_data_for_plots/best_lag_points_lag_max_allowed_", lag_max_allowed, ".csv"))
+
+dir.create("cross_correlation_plots")
+ggsave(filename=paste0("black_and_white_cross_correlation_plot_lag_)", lag_max_allowed, ".tif"), 
+       path="./cross_correlation_plots/", 
+       plot = black_and_white_cross_correlation_plot, device="tiff",  width=10, height=5, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste0("colour_cross_correlation_plot_lag_)", lag_max_allowed, ".tif"), 
+       path="./cross_correlation_plots/", 
+       plot = colour_cross_correlation_plot, device="tiff",  width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+#we just want a summary count of the best lag points
+write.csv(as.data.frame(freq(best_lag_points$lag)), paste0("cross_correlation_data_for_plots/best_lag_point_summary_lag_max_allowed_", lag_max_allowed, ".csv"))
+}
+#write a summary frame of all the ccf_points for ease of porting
+write.csv(all_study_patient_ccf_points, "cross_correlation_data_for_plots/all_study_patient_ccf_points.csv")
+
+```
+
+```{r, create sensible names to save and use in other files to join to data. Add these two files to those that can be saved and reloaded}
+cross_correlation_individual_data_points_to_join <- 
+  subset(ccf_points, lag_max_allowed==13)
+cross_correlation_best_lags_to_join <- best_lag_points
+```
+
+```{r}
+#pull out id from id_visit
+all_study_patient_ccf_points$id <- gsub(x=all_study_patient_ccf_points$id_visit,
+                      pattern="_visit.*",
+                      replacement="")
+#pull out visit from id_visit
+all_study_patient_ccf_points$visit <- gsub(x=all_study_patient_ccf_points$id_visit,
+                      pattern=".*visit_",
+                      replacement="")
+#then join patient details that just has the ARM
+all_study_patient_ccf_points_with_arm <- left_join(
+  all_study_patient_ccf_points,
+  patient_details,
+  by = join_by(id)
+)
+#then create the treatment column again here
+all_study_patient_ccf_points_with_arm$treatment <-
+  ifelse(all_study_patient_ccf_points_with_arm$ARM=="Standard GC therapy",
+         "Standard therapy",
+         "Chronocort")
+#correct the first visit
+all_study_patient_ccf_points_with_arm$treatment <-
+  ifelse(all_study_patient_ccf_points_with_arm$ARM=="Chronocort" & 
+         all_study_patient_ccf_points_with_arm$visit==1,
+         "Standard therapy",
+         all_study_patient_ccf_points_with_arm$treatment)
+```
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+patient_details <- NULL
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_4")
+```
+
+
+
+

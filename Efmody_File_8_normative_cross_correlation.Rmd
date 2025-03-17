@@ -1,0 +1,523 @@
+
+Cross correlation of normative data
+
+clear environment and load packages
+
+```{r, load packages}
+rm(list=ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_data"))
+
+#take the cross correlation plot points from file 4 to plot against normative data on the same graph
+load_efmody_files_function(
+  previous_file_name="file_4",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("all_study_patient_ccf_points_with_arm",
+                                   "all_study_patient_ccf_points"))
+
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("patient_details"))
+
+```
+
+```{r, calculate number of profiles that go into these calculations, for purposes of a sensible confidence interval of the mean}
+
+n_all_CAH_profiles <- 
+  length(unique(subset(all_study_patient_ccf_points_with_arm)$id_visit))
+
+n_chronocort_profiles <- 
+  length(unique(subset(all_study_patient_ccf_points_with_arm, treatment=="Chronocort")$id_visit))
+
+n_standard_therapy_profiles <- 
+  length(unique(subset(all_study_patient_ccf_points_with_arm, treatment=="Standard therapy")$id_visit))
+
+```
+
+
+```{r, shaping our data into the format suitable for cross correlation analysis}
+normative_data_ln_Androstenedione <-
+  subset(normative_data, marker=="normative_Androstenedione")
+
+normative_data_ln_Androstenedione$ln_value_nM <-
+  log(normative_data_ln_Androstenedione$value_nM)
+
+normative_data_ln_Androstenedione <- 
+  normative_data_ln_Androstenedione[c("patient",
+                                      "reading_number", 
+                                      "ln_value_nM")]
+
+normative_data_ln_Androstenedione <- pivot_wider(normative_data_ln_Androstenedione,
+                 names_from = "reading_number",
+                 values_from = "ln_value_nM")
+  
+normative_data_ln_Androstenedione_matrix <- 
+  as.matrix(normative_data_ln_Androstenedione)
+nrow(normative_data_ln_Androstenedione)
+
+normative_data_ln_17OHP <- 
+  subset(normative_data, marker=="normative_17OHP")
+
+normative_data_ln_17OHP$ln_value_nM <-
+  log(normative_data_ln_17OHP$value_nM)
+
+normative_data_ln_17OHP <- 
+  normative_data_ln_17OHP[c("patient",
+                                      "reading_number", 
+                                      "ln_value_nM")]
+
+normative_data_ln_17OHP <- pivot_wider(normative_data_ln_17OHP,
+                 names_from = "reading_number",
+                 values_from = "ln_value_nM")
+
+normative_data_ln_17OHP_matrix <- 
+  as.matrix(normative_data_ln_17OHP)
+
+nrow(normative_data_ln_17OHP)
+```
+loop around the normative healthy participants
+
+```{r, loop for normative cross correlation alone}
+#set maximum lag first - this is 72 for normative data
+for (lag_max_allowed in c(72)){
+ccf_points_normative <- data.frame(NULL)
+best_lag_points <- data.frame(NULL)
+
+normative_data_ln_Androstenedione <- 
+  normative_data_ln_Androstenedio
+
+#get the number of 17OHp normative profiles
+n_normative_17OHP_profiles <- 
+  nrow(normative_data_ln_17OHP)
+
+for (i in 1:nrow(normative_data_ln_17OHP)){
+  
+  ccf_object <- 
+    ccf(
+      as.numeric(normative_data_ln_Androstenedione[i,]), 
+      as.numeric(normative_data_ln_17OHP[i,]),
+      lag.max=lag_max_allowed, 
+      plot=F,
+      type="correlation")
+  
+  #collect all the individual cross correlation points
+  ccf_points_normative_to_add <-
+    data.frame(
+      patient=normative_data_ln_Androstenedione[i,1],
+      lag_max_allowed = lag_max_allowed,
+      lag=ccf_object$lag,
+      cross_correlation_function=ccf_object$acf
+    )
+  
+  ccf_points_normative_to_add$cross_correlation_function <- ifelse(
+    ccf_points_normative_to_add$cross_correlation_function=="NaN", 
+    1,
+    ccf_points_normative_to_add$cross_correlation_function
+  )
+  
+  #collect the winning cross correlation lag for each patients' visit
+  best_cross_correlation_time_point_to_add <- 
+    data.frame(patient=rownames(normative_data_ln_Androstenedione[i,],))
+  
+  best_cross_correlation_time_point_to_add <-
+    ccf_points_normative_to_add %>%
+    slice_max(cross_correlation_function, n=1, with_ties = F)
+  
+  best_cross_correlation_time_point_to_add$lag_max_allowed <- lag_max_allowed
+  
+  ccf_points_normative <- rbind (ccf_points_normative, ccf_points_normative_to_add)
+  best_lag_points <- rbind (best_lag_points, best_cross_correlation_time_point_to_add)
+
+  }
+
+
+
+
+ccf_points_normative_for_summary <- 
+  subset(ccf_points_normative, cross_correlation_function!="NaN")
+
+descr(ccf_points_normative_for_summary$cross_correlation_function)
+
+freq(ccf_points_normative_for_summary$lag)
+
+#turn the lag into a factor so it can be grouped
+ccf_points_normative_for_summary$lag <-
+  as.character(ccf_points_normative_for_summary$lag)
+
+ccf_points_normative_summary <- 
+  ccf_points_normative_for_summary %>%
+  group_by(lag) %>%
+  dplyr::summarise(
+    n = length(cross_correlation_function),
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    conf_low_ccf = mean_cross_correlation_function - 1.96 * ((sd_cross_correlation_function) / (n_normative_17OHP_profiles^0.5)),
+    conf_high_ccf = mean_cross_correlation_function + 1.96 * ((sd_cross_correlation_function) / (n_normative_17OHP_profiles^0.5)),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+
+#now make the lag a number again so it can get plotted
+ccf_points_normative_summary$lag <- 
+  as.numeric(ccf_points_normative_summary$lag)
+
+ccf_points_normative_summary <- 
+  as.data.frame(ccf_points_normative_summary)
+ccf_points_normative_summary <-
+  subset(ccf_points_normative_summary, lag=="0" |
+         lag=="6"  |  lag=="-6"  |
+         lag=="12" |  lag=="-12" |
+         lag=="18" |  lag=="-18" |
+         lag=="24" |  lag=="-24" |
+         lag=="30" |  lag=="-30" |
+         lag=="36" |  lag=="-36" |
+         lag=="42" |  lag=="-42" |
+         lag=="48" |  lag=="-48" |
+         lag=="54" |  lag=="-54" |
+         lag=="60" |  lag=="-60" |
+         lag=="66" |  lag=="-66" |
+         lag=="72" |   lag=="-72"
+         )
+
+green_cross_correlation_plot <- 
+  ggplot() + 
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_line(data=ccf_points_normative,
+                      aes(x=lag, 
+                          y=cross_correlation_function, 
+                          group=patient),
+            alpha=0.01) +
+  geom_point(data=ccf_points_normative_summary,
+             aes(x=lag, 
+                 y=mean_cross_correlation_function),
+             colour="green4",
+             size=3,
+             alpha=0.8)+
+  geom_line(data=ccf_points_normative_summary,
+             aes(x=lag, 
+                 y=mean_cross_correlation_function),
+             colour="green4",
+             linewidth=2,
+             alpha=0.8)+
+  geom_errorbar(data=ccf_points_normative_summary, 
+                aes(x=lag,
+                    ymin=conf_low_ccf, 
+                    ymax=conf_high_ccf),
+                colour="green4",
+                width=0.5,
+                cex=1,
+             alpha=0.8)+ 
+
+  labs(title="Crosscorrelation Function of log Androstenedione vs 17OHP"
+  , 
+        x="Number of 2 hour lags between markers", y="Cross Correlation Function") +
+  themewithlegend
+green_cross_correlation_plot
+dir.create("normative_cross_correlation_data_for_plots")
+write.csv(ccf_points_normative, 
+          paste0("normative_cross_correlation_data_for_plots/ccf_points_normative_lag_max_allowed_", lag_max_allowed, ".csv"))
+write.csv(best_lag_points, 
+          paste0("normative_cross_correlation_data_for_plots/best_lag_points_lag_max_allowed_", lag_max_allowed, ".csv"))
+dir.create("normative_cross_correlation_plots")
+ggsave(filename=paste0("green_cross_correlation_plot_lag_", lag_max_allowed, ".tif"), 
+       path="./normative_cross_correlation_plots/", 
+       plot = green_cross_correlation_plot, device="tiff",  width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+#we just want a summary count of the best lag points
+write.csv(as.data.frame(freq(best_lag_points$lag)), paste0("normative_cross_correlation_data_for_plots/best_lag_point_summary_lag_max_allowed_", lag_max_allowed, ".csv"))
+
+}
+```
+
+
+```{r, create sensible names to save and use in other files to join to data. Add these two files to those that can be saved and reloaded}
+normative_cross_correlation_individual_data_points_to_join <- 
+  subset(ccf_points_normative, lag_max_allowed==72)
+normative_cross_correlation_best_lags_to_join <- best_lag_points
+```
+
+
+```{r, plot our normative cross correlation against our study patient cross correlation}
+all_study_patient_ccf_points_with_arm <- left_join(
+  all_study_patient_ccf_points,
+  patient_details,
+  by = join_by(id)
+)
+
+all_study_patient_ccf_points <- 
+  all_study_patient_ccf_points_with_arm
+
+#scale up our readings in the study group, so in the study we had measurements 2 hours apart, in the normative data 20 minutes apart
+all_study_patient_ccf_points$adjusted_lag <-
+  all_study_patient_ccf_points$lag * 6
+all_study_patient_ccf_points$adjusted_lag_max_allowed <-
+  all_study_patient_ccf_points$lag_max_allowed * 6
+
+#then go through the loop
+#set maximum lag first - this is 72 for normative data
+
+for (lag_max_allowed_to_plot in c(72)){
+
+ccf_points <- data.frame(NULL)
+best_lag_points <- data.frame(NULL)
+for (i in 1:nrow(normative_data_ln_17OHP)){
+
+    #start by taking out the data we want from the study patients
+  all_study_patient_ccf_points_to_plot <- 
+    subset(all_study_patient_ccf_points, adjusted_lag_max_allowed==lag_max_allowed_to_plot)
+
+  ccf_object <- 
+    ccf(
+      as.numeric(normative_data_ln_Androstenedione[i,]), 
+      as.numeric(normative_data_ln_17OHP[i,]),
+      lag.max=lag_max_allowed_to_plot, 
+      plot=F,
+      type="correlation")
+  
+  #collect all the individual cross correlation points
+  ccf_points_to_add <-
+    data.frame(
+      patient=normative_data_ln_Androstenedione[i,1],
+      lag_max_allowed_to_plot = lag_max_allowed_to_plot,
+      lag=ccf_object$lag,
+      cross_correlation_function=ccf_object$acf
+    )
+  
+  ccf_points_to_add$cross_correlation_function <- ifelse(
+    ccf_points_to_add$cross_correlation_function=="NaN", 
+    1,
+    ccf_points_to_add$cross_correlation_function
+  )
+  
+  #collect the winning cross correlation lag for each patients' visit
+  best_cross_correlation_time_point_to_add <- 
+    data.frame(patient=rownames(normative_data_ln_Androstenedione[i,],))
+  
+  best_cross_correlation_time_point_to_add <-
+    ccf_points_to_add %>%
+    slice_max(cross_correlation_function, n=1, with_ties = F)
+  
+  best_cross_correlation_time_point_to_add$lag_max_allowed_to_plot <- lag_max_allowed_to_plot
+  
+  ccf_points <- rbind (ccf_points, ccf_points_to_add)
+  best_lag_points <- rbind (best_lag_points, best_cross_correlation_time_point_to_add)
+
+  }
+
+
+
+
+ccf_points_for_summary <- 
+  subset(ccf_points, cross_correlation_function!="NaN")
+
+descr(ccf_points_for_summary$cross_correlation_function)
+
+freq(ccf_points_for_summary$lag)
+
+#turn the lag into a factor so it can be grouped
+ccf_points_for_summary$lag <-
+  as.character(ccf_points_for_summary$lag)
+
+#dplyr summarise it
+ccf_points_summary <- 
+  ccf_points_for_summary %>%
+  group_by(lag) %>%
+  dplyr::summarise(
+    n = length(cross_correlation_function),
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    conf_low_ccf = mean_cross_correlation_function - 1.96 * ((sd_cross_correlation_function) / (n_all_CAH_profiles^0.5)),
+    conf_high_ccf = mean_cross_correlation_function + 1.96 * ((sd_cross_correlation_function) / (n_all_CAH_profiles^0.5)),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+#also summarise the points we are plotting for the study patients
+all_study_patient_ccf_points_to_plot_summary <-
+  all_study_patient_ccf_points_to_plot %>%
+  group_by(adjusted_lag) %>%
+  dplyr::summarise(
+    n = length(cross_correlation_function),
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    conf_low_ccf = mean_cross_correlation_function - 1.96 * ((sd_cross_correlation_function) / (n_all_CAH_profiles^0.5)),
+    conf_high_ccf = mean_cross_correlation_function + 1.96 * ((sd_cross_correlation_function) / (n_all_CAH_profiles^0.5)),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+
+#summarise those in each arm separately for plotting separately
+all_study_patient_ccf_points_to_plot_summary_chronocort <-
+  all_study_patient_ccf_points_to_plot %>%
+  filter(ARM=="Chronocort" & visit>1) %>%
+  group_by(adjusted_lag) %>%
+  dplyr::summarise(
+    n = length(cross_correlation_function),
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    conf_low_ccf = mean_cross_correlation_function - 1.96 * ((sd_cross_correlation_function) / (n_chronocort_profiles^0.5)),
+    conf_high_ccf = mean_cross_correlation_function + 1.96 * ((sd_cross_correlation_function) / (n_chronocort_profiles^0.5)),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+
+all_study_patient_ccf_points_to_plot_summary_standard_therapy <-
+  all_study_patient_ccf_points_to_plot %>%
+  filter(ARM=="Standard GC therapy" |
+         ARM=="Chronocort" & visit==1) %>%
+  group_by(adjusted_lag) %>%
+  dplyr::summarise(
+    n = length(cross_correlation_function),
+    mean_cross_correlation_function = mean(cross_correlation_function, na.rm=T),
+    sd_cross_correlation_function = sd(cross_correlation_function, na.rm=T),
+    conf_low_ccf = mean_cross_correlation_function - 1.96 * ((sd_cross_correlation_function) / (n_standard_therapy_profiles^0.5)),
+    conf_high_ccf = mean_cross_correlation_function + 1.96 * ((sd_cross_correlation_function) / (n_standard_therapy_profiles^0.5)),
+    median = median(cross_correlation_function, na.rm=T),
+                           Q1=quantile(cross_correlation_function, na.rm=T, 0.25),
+                           Q3=quantile(cross_correlation_function, na.rm=T, 0.75))
+
+#now make the lag a number again so it can get plotted
+ccf_points_summary$lag <- 
+  as.numeric(ccf_points_summary$lag)
+
+ccf_points_summary <-
+  subset(ccf_points_summary, lag=="0" |
+         lag=="6"  |  lag=="-6"  |
+         lag=="12" |  lag=="-12" |
+         lag=="18" |  lag=="-18" |
+         lag=="24" |  lag=="-24" |
+         lag=="30" |  lag=="-30" |
+         lag=="36" |  lag=="-36" |
+         lag=="42" |  lag=="-42" |
+         lag=="48" |  lag=="-48" |
+         lag=="54" |  lag=="-54" |
+         lag=="60" |  lag=="-60" |
+         lag=="66" |  lag=="-66" |
+         lag=="72" |   lag=="-72"
+         )
+
+combined_cross_correlation_plot <- 
+  ggplot() + 
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_line(data=ccf_points,
+                      aes(x=lag, 
+                          y=cross_correlation_function, 
+                          group=patient),
+            alpha=0.01,
+            colour="green4") +
+  geom_point(data=ccf_points_summary,
+             aes(x=lag, 
+                 y=mean_cross_correlation_function),
+             colour="green4",
+             size=3,
+             alpha=0.8)+
+  geom_line(data=ccf_points_summary,
+             aes(x=lag, 
+                 y=mean_cross_correlation_function),
+             colour="green4",
+             linewidth=2,
+             alpha=0.8)+
+  geom_errorbar(data=ccf_points_summary, 
+                aes(x=lag,
+                    ymin=conf_low_ccf, 
+                    ymax=conf_high_ccf),
+                colour="green4",
+                width=0.5,
+                cex=1,
+             alpha=0.8)+ 
+#then overlay our normative data
+  geom_line(data=all_study_patient_ccf_points_to_plot,
+                      aes(x=adjusted_lag, 
+                          y=cross_correlation_function, 
+                          group=id_visit),
+            alpha=0.01) +
+  geom_point(data=all_study_patient_ccf_points_to_plot_summary_chronocort,
+             aes(x=adjusted_lag, 
+                 y=mean_cross_correlation_function),
+             colour="maroon",
+             size=3,
+             alpha=0.8) +
+  geom_line(data=all_study_patient_ccf_points_to_plot_summary_chronocort,
+             aes(x=adjusted_lag, 
+                 y=mean_cross_correlation_function),
+             colour="maroon",
+             linewidth=2,
+             alpha=0.8) +
+  geom_errorbar(data=all_study_patient_ccf_points_to_plot_summary_chronocort, 
+                aes(x=adjusted_lag,
+                    ymin=conf_low_ccf, 
+                    ymax=conf_high_ccf),
+                colour="maroon",
+                width=2,
+                cex=1,
+             alpha=0.8) +
+  geom_point(data=all_study_patient_ccf_points_to_plot_summary_standard_therapy,
+             aes(x=adjusted_lag, 
+                 y=mean_cross_correlation_function),
+             colour="black",
+             size=3,
+             alpha=0.8) +
+  geom_line(data=all_study_patient_ccf_points_to_plot_summary_standard_therapy,
+             aes(x=adjusted_lag, 
+                 y=mean_cross_correlation_function),
+             colour="black",
+             linewidth=2,
+             alpha=0.8) +
+  geom_errorbar(data=all_study_patient_ccf_points_to_plot_summary_standard_therapy, 
+                aes(x=adjusted_lag,
+                    ymin=conf_low_ccf, 
+                    ymax=conf_high_ccf),
+                colour="black",
+                width=2,
+                cex=1,
+             alpha=0.8) +
+  labs(title="Crosscorrelation Function of log Androstenedione vs 17OHP"
+  , 
+        x="Number of 2 hour lags between markers", y="Cross Correlation Function") +
+  themewithlegend
+combined_cross_correlation_plot
+
+dir.create("normative_cross_correlation_data_for_plots")
+write.csv(ccf_points, 
+          paste0("normative_cross_correlation_data_for_plots/ccf_points_lag_max_allowed_to_plot_", lag_max_allowed_to_plot, ".csv"))
+
+write.csv(best_lag_points, 
+          paste0("normative_cross_correlation_data_for_plots/best_lag_points_lag_max_allowed_to_plot_", lag_max_allowed_to_plot, ".csv"))
+
+dir.create("normative_cross_correlation_plots")
+ggsave(filename=paste0("combined_cross_correlation_plot_lag_", lag_max_allowed_to_plot, ".tif"), 
+       path="./normative_cross_correlation_plots/", 
+       plot = combined_cross_correlation_plot, device="tiff",  width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+write.csv(as.data.frame(freq(best_lag_points$lag)), paste0("normative_cross_correlation_data_for_plots/best_lag_point_summary_lag_max_allowed_to_plot_", lag_max_allowed_to_plot, ".csv"))
+
+}
+```
+
+```{r}
+write.csv(row.names = F, ccf_points_normative_summary, "cross_correlation_data_for_plots/all_healthy_participants_ccf_points_summary.csv")
+write.csv(row.names = F, all_study_patient_ccf_points_to_plot_summary_chronocort, "cross_correlation_data_for_plots/all_study_patient_ccf_points_to_plot_summary_chronocort.csv")
+write.csv(row.names = F, all_study_patient_ccf_points_to_plot_summary_standard_therapy, "cross_correlation_data_for_plots/all_study_patient_ccf_points_to_plot_summary_standard_therapy.csv")
+write.csv(row.names = F, all_study_patient_ccf_points_to_plot_summary, "cross_correlation_data_for_plots/all_study_patient_ccf_points_to_plot_summary.csv")
+
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+rm(patient_details)
+rm(normative_data)
+rm(all_study_patient_ccf_points)
+
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_8")
+```

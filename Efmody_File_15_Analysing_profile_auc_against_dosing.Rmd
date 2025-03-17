@@ -1,0 +1,1809 @@
+
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles",
+                                   "dosing_frame_by_visit")) 
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("all_patient_spline_fits_both_markers"))
+
+load_efmody_files_function(
+  previous_file_name="file_9",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("auc_total_rankings_across_all_visits"))
+```
+
+we want to look separately at profiles within patients that stayed on the same dose, and later what happeneed to profiles on patients who changed dose
+
+```{r, add dosing summaries to profile summaries}
+profile_summaries_with_dosing <-
+  left_join(subset(all_patient_spline_fits_both_markers, degrees_of_freedom==10),
+            dosing_frame_by_visit,
+            by = join_by(id_visit, 
+                         id, 
+                         visit_name))
+```
+
+we can now use profile_summaries_with_dosing to summarise the auc of patients between visits dependent upon their dosing 
+
+```{r, visualising the auc of 17OHP patients taking hydrocortisone switched to chronocort}
+data_to_plot <-
+  subset(profile_summaries_with_dosing, 
+         AVISITN==1 & ARM=="Chronocort" & 
+           pre_trial_steroid_preparation=="Hydrocortisone" |
+         AVISITN==2 & ARM=="Chronocort" & 
+           pre_trial_steroid_preparation=="Hydrocortisone")
+
+plot_to_print <-
+  ggplot(data=data_to_plot, 
+               aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_signif(comparisons = list(c("Visit 1", "Visit 2")), 
+              test="t.test",
+              test.args=c(paired=T),
+              map_signif_level=F,
+              vjust=2) +
+  geom_dotplot(aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP,
+                   colour=sex),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 0.1,
+               stackratio = 1,
+               fill="white",
+               dotsize=2,
+               alpha=0.8) +
+  geom_line(aes(group=id, colour=sex),
+            alpha=0.3)+
+  scale_colour_manual(values=c("red","blue"))+
+  labs(title=paste0("Just patients on hydrocortisone switched to chronocort"),
+       subtitle="Violin lines at quantiles of 0.25, 0.5, 0.75",
+       x=NULL) + 
+  themepowerpointtitle
+plot_to_print
+
+dir.create("violin_comparison_plots_by_preparation")
+ggsave(filename=paste0("violin_comparison_hydrocortisone_to_chronocort_outcome_17OHP", ".tif"), 
+       path=paste0("violin_comparison_plots_by_preparation"),
+       plot = plot_to_print, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+sink("violin_comparison_plots_by_preparation/accompanying_stats_hydrocortisone_to_chronocort_outcome_17OHP.txt")
+print("all patients taking hydrocortisone then chronocort at visit 1")
+descr(subset(data_to_plot, AVISITN==1)$ln_area_under_curve_17OHP)
+print("all patients taking hydrocortisone then chronocort at visit 2")
+descr(subset(data_to_plot, AVISITN==2)$ln_area_under_curve_17OHP)
+sink()
+```
+
+```{r, visualising the auc of 17OHP patients taking hydrocortisone and stayed on hydrocortisone}
+data_to_plot <-
+  subset(profile_summaries_with_dosing, 
+         AVISITN==1 & ARM=="Standard GC therapy" & 
+           pre_trial_steroid_preparation=="Hydrocortisone" & id != "DIUR-005_201_001" |
+         AVISITN==2 & ARM=="Standard GC therapy" & pre_trial_steroid_preparation=="Hydrocortisone" & 
+           id != "DIUR-005_201_001" )
+
+plot_to_print <-
+  ggplot(data_to_plot, 
+               aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_signif(data=data_to_plot,
+              comparisons = list(c("Visit 1", "Visit 2")), 
+              test="t.test",
+              test.args=c(paired=T),
+              map_signif_level=F,
+              vjust=2) +
+  geom_dotplot(aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP,
+                   colour=sex),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 0.1,
+               stackratio = 1,
+               fill="white",
+               dotsize=2,
+               alpha=0.8) +
+  geom_line(aes(group=id, colour=sex),
+            alpha=0.3)+
+  scale_colour_manual(values=c("red","blue"))+
+
+  labs(title=paste0("Just patients on hydrocortisone stayed on hydrocortisone"),
+       subtitle="Violin lines at quantiles of 0.25, 0.5, 0.75",
+       x=NULL) + 
+  themepowerpointtitle
+plot_to_print
+
+dir.create("violin_comparison_plots_by_preparation")
+ggsave(filename=paste0("violin_comparison_hydrocortisone_to_hydrocortisone_outcome_17OHP", ".tif"), 
+       path=paste0("violin_comparison_plots_by_preparation"),
+       plot = plot_to_print, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+sink("violin_comparison_plots_by_preparation/accompanying_stats_hydrocortisone_to_hydrocortisone.txt")
+print("all patients taking hydrocortisone then hydrocortisone at visit 1")
+descr(subset(data_to_plot, AVISITN==1)$ln_area_under_curve_17OHP)
+print("all patients taking hydrocortisone then hydrocortisone at visit 2")
+descr(subset(data_to_plot, AVISITN==2)$ln_area_under_curve_17OHP)
+sink()
+```
+
+```{r, visualising the auc of 17OHP patients taking prednisolone switched to chronocort}
+data_to_plot <-
+  subset(profile_summaries_with_dosing, 
+         AVISITN==1 & ARM=="Chronocort" & pre_trial_steroid_preparation=="Prednisolone" |
+         AVISITN==2 & ARM=="Chronocort" & pre_trial_steroid_preparation=="Prednisolone")
+
+plot_to_print <-
+  ggplot(data=data_to_plot, 
+               aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_signif(comparisons = list(c("Visit 1", "Visit 2")), 
+              test="t.test",
+              test.args=c(paired=T),
+              map_signif_level=F,
+              vjust=2) +
+  geom_dotplot(aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP,
+                   colour=sex),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 0.1,
+               stackratio = 1,
+               fill="white",
+               dotsize=2,
+               alpha=0.8) +
+  geom_line(aes(group=id, colour=sex),
+            alpha=0.3)+
+  scale_colour_manual(values=c("red","blue"))+
+
+  labs(title=paste0("Just patients on Prednisolone switched to chronocort"),
+       subtitle="Violin lines at quantiles of 0.25, 0.5, 0.75",
+       x=NULL) + 
+  themepowerpointtitle
+plot_to_print
+
+dir.create("violin_comparison_plots_by_preparation")
+ggsave(filename=paste0("violin_comparison_Prednisolone_to_chronocort_outcome_17OHP", ".tif"), 
+       path=paste0("violin_comparison_plots_by_preparation"),
+       plot = plot_to_print, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+sink("violin_comparison_plots_by_preparation/accompanying_stats_Prednisolone_to_chronocort_outcome_17OHP.txt")
+print("all patients taking Prednisolone then chronocort at visit 1")
+descr(subset(data_to_plot, AVISITN==1)$ln_area_under_curve_17OHP)
+print("all patients taking Prednisolone then chronocort at visit 2")
+descr(subset(data_to_plot, AVISITN==2)$ln_area_under_curve_17OHP)
+sink()
+```
+
+```{r, visualising the auc of 17OHP patients taking Prednisolone and stayed on Prednisolone}
+data_to_plot <-
+  subset(profile_summaries_with_dosing, 
+         AVISITN==1 & ARM=="Standard GC therapy" & pre_trial_steroid_preparation=="Prednisolone" & id != "DIUR-005_201_001" |
+         AVISITN==2 & ARM=="Standard GC therapy" & pre_trial_steroid_preparation=="Prednisolone" & id != "DIUR-005_201_001" )
+
+plot_to_print <-
+  ggplot(data_to_plot, 
+               aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP)) +
+  geom_violin(linewidth=0.5,
+              draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_signif(data=data_to_plot,
+              comparisons = list(c("Visit 1", "Visit 2")), 
+              test="t.test",
+              test.args=c(paired=T),
+              map_signif_level=F,
+              vjust=2) +
+  geom_dotplot(aes(x=visit_name,
+                   y=ln_area_under_curve_17OHP,
+                   colour=sex),
+               stackdir = "center",
+               binaxis = "y",
+               method = "histodot",
+               binwidth = 0.1,
+               stackratio = 1,
+               fill="white",
+               dotsize=2,
+               alpha=0.8) +
+  geom_line(aes(group=id, colour=sex),
+            alpha=0.3)+
+  scale_colour_manual(values=c("red","blue"))+
+
+  labs(title=paste0("Just patients on Prednisolone stayed on Prednisolone"),
+       subtitle="Violin lines at quantiles of 0.25, 0.5, 0.75",
+       x=NULL) + 
+  themepowerpointtitle
+plot_to_print
+
+dir.create("violin_comparison_plots_by_preparation")
+ggsave(filename=paste0("violin_comparison_Prednisolone_to_Prednisolone_outcome_17OHP", ".tif"), 
+       path=paste0("violin_comparison_plots_by_preparation"),
+       plot = plot_to_print, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+sink("violin_comparison_plots_by_preparation/accompanying_stats_Prednisolone_to_Prednisolone.txt")
+print("all patients taking Prednisolone then Prednisolone at visit 1")
+descr(subset(data_to_plot, AVISITN==1)$ln_area_under_curve_17OHP)
+print("all patients taking Prednisolone then Prednisolone at visit 2")
+descr(subset(data_to_plot, AVISITN==2)$ln_area_under_curve_17OHP)
+sink()
+```
+
+```{r, create collapsed preparation at visit}
+profile_summaries_with_dosing$collapsed_preparation_at_visit <- 
+  profile_summaries_with_dosing$preparation_at_visit
+
+profile_summaries_with_dosing$collapsed_preparation_at_visit <- 
+  ifelse(
+    profile_summaries_with_dosing$preparation_at_visit=="Dectancyl" |
+    profile_summaries_with_dosing$preparation_at_visit=="Dexamethasone" |
+    profile_summaries_with_dosing$preparation_at_visit=="Plenadren" |
+    profile_summaries_with_dosing$preparation_at_visit=="mixed_dosing" ,
+    "other",
+    profile_summaries_with_dosing$collapsed_preparation_at_visit
+  )
+
+profile_summaries_with_dosing$collapsed_preparation_at_visit <- 
+  ifelse(
+    profile_summaries_with_dosing$preparation_at_visit=="Prednisolone" |
+    profile_summaries_with_dosing$preparation_at_visit=="Prednisone"  ,
+    "pred",
+    profile_summaries_with_dosing$collapsed_preparation_at_visit
+  )
+freq(profile_summaries_with_dosing$collapsed_preparation_at_visit)
+
+
+
+```
+
+```{r, create future visit numbers for pairing}
+#create a next visit number column to enable pairing later on
+profile_summaries_with_dosing$next_visit_number <-
+  profile_summaries_with_dosing$visit_number + 1
+#id_next_visit will facilitate the easiest join
+profile_summaries_with_dosing$id_next_visit <-
+  paste0(
+    profile_summaries_with_dosing$id,
+    "_",
+    profile_summaries_with_dosing$next_visit_number)
+
+#create a two visits time number column to enable pairing later on
+profile_summaries_with_dosing$two_visits_time_number <-
+  profile_summaries_with_dosing$visit_number + 2
+#id_two_visits_time will facilitate the easiest join
+profile_summaries_with_dosing$id_two_visits_time <-
+  paste0(
+    profile_summaries_with_dosing$id,
+    "_",
+    profile_summaries_with_dosing$two_visits_time_number)
+
+#create a three visits time number column to enable pairing later on
+profile_summaries_with_dosing$three_visits_time_number <-
+  profile_summaries_with_dosing$visit_number + 3
+#id_two_visits_time will facilitate the easiest join
+profile_summaries_with_dosing$id_three_visits_time <-
+  paste0(
+    profile_summaries_with_dosing$id,
+    "_",
+    profile_summaries_with_dosing$three_visits_time_number)
+```
+
+```{r, subsetting visits next to each other where dose was maintained on the same preparation}
+#now we get rid of chronocort arm visit 1 again, as they change their preparation
+profile_summaries_with_dosing_to_remove <-
+  subset(profile_summaries_with_dosing, AVISITN==1 & ARM=="Chronocort")
+profile_summaries_with_dosing_same_preparation <-
+  subset(profile_summaries_with_dosing, !(id_visit %in% profile_summaries_with_dosing_to_remove$id_visit))
+
+
+#now we subset only the visits that maintained their dose at the next visit - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_maintained_at_next_visit <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_maintained_at_next_visit==1)
+
+#this totals the 200 I previously calculated - 68 in the chronocort arm, 132 in the standard arm
+#then we want to take all the profiles that were maintained at the previous visit
+profile_summaries_with_dosing_same_preparation_maintained_from_previous_visit <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_maintained_from_previous_visit==1)
+
+#note here we have to get rid of visit 2 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_second_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_maintained_from_previous_visit,
+         AVISITN==2 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_second_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_maintained_from_previous_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_maintained_from_previous_visit, 
+         !(id_visit %in% profile_summaries_with_dosing_to_remove_for_second_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_maintained_from_previous_visit)
+```
+
+we therefore have two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits next to each other}
+profile_summaries_maintained_paired_one_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_maintained_at_next_visit,
+   profile_summaries_with_dosing_same_preparation_maintained_from_previous_visit,
+   by = (c("id_next_visit"="id_visit")))
+
+visual_check <- profile_summaries_maintained_paired_one_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+```
+
+now add to this data set by pairing visits that were two visits apart
+
+```{r, subsetting visits two apart where dose was maintained on the same preparation}
+#now we subset only the visits that maintained their dose at two visits time - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_maintained_in_two_visits_time <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_in_two_visits_is_maintained==1)
+nrow(profile_summaries_with_dosing_same_preparation_maintained_in_two_visits_time)
+#then we want to take all the profiles that were maintained two visits ago
+profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_maintained_from_two_visits_ago==1)
+nrow(profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago)
+#note here we have to get rid of visit 3 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_third_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago,
+         AVISITN==3 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_third_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago, 
+         !(id_visit %in% 
+             profile_summaries_with_dosing_to_remove_for_third_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago)
+```
+
+we therefore have another two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits two apart}
+profile_summaries_maintained_paired_two_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_maintained_in_two_visits_time,
+   profile_summaries_with_dosing_same_preparation_maintained_from_two_visits_ago,
+   by = (c("id_two_visits_time"="id_visit")))
+
+nrow(profile_summaries_maintained_paired_two_gap)
+visual_check <- 
+  profile_summaries_maintained_paired_two_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+```
+
+now add to this data set by pairing visits that were three visits apart
+
+```{r, subsetting visits three apart where dose was maintained on the same preparation}
+#now we subset only the visits that maintained their dose at three visits time - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_maintained_in_three_visits_time <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_in_three_visits_is_maintained==1)
+nrow(profile_summaries_with_dosing_same_preparation_maintained_in_three_visits_time)
+#then we want to take all the profiles that were maintained two visits ago
+profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_maintained_from_three_visits_ago==1)
+nrow(profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago)
+#note here we have to get rid of visit 4 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago,
+         AVISITN==4 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago, 
+         !(id_visit %in% 
+             profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago)
+```
+
+we therefore have another two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits two apart}
+profile_summaries_maintained_paired_three_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_maintained_in_three_visits_time,
+   profile_summaries_with_dosing_same_preparation_maintained_from_three_visits_ago,
+   by = (c("id_three_visits_time"="id_visit")))
+nrow(profile_summaries_maintained_paired_three_gap)
+visual_check <- 
+  profile_summaries_maintained_paired_three_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+
+```
+
+
+***************************
+combining all paired profiles for those maintained on a dose
+***************************
+
+```{r, combining visits with patients maintained on a particular dose}
+#before we can bind, we have to tidy up the id columns to ensure they can bind together
+profile_summaries_maintained_paired_one_gap$id_next_visit <- NULL
+profile_summaries_maintained_paired_one_gap$id_two_visits_time.x <- NULL
+profile_summaries_maintained_paired_one_gap$id_three_visits_time.x <- NULL
+
+profile_summaries_maintained_paired_two_gap$id_next_visit.x <- NULL
+profile_summaries_maintained_paired_two_gap$id_two_visits_time <- NULL
+profile_summaries_maintained_paired_two_gap$id_three_visits_time.x <- NULL
+
+profile_summaries_maintained_paired_three_gap$id_next_visit.x <- NULL
+profile_summaries_maintained_paired_three_gap$id_two_visits_time.x <- NULL
+profile_summaries_maintained_paired_three_gap$id_three_visits_time <- NULL
+
+profile_summaries_maintained_paired <- 
+  rbind(profile_summaries_maintained_paired_one_gap,
+      profile_summaries_maintained_paired_two_gap,
+      profile_summaries_maintained_paired_three_gap)
+
+```
+
+```{r, calculating coefficient of variation of marker auc's within patients maintained on the same dose. Both on absolute and log scale}
+profile_summaries_maintained_paired$mean_area_under_curve_17OHP <-
+  (profile_summaries_maintained_paired$area_under_curve_17OHP.x +
+  profile_summaries_maintained_paired$area_under_curve_17OHP.y ) /2
+profile_summaries_maintained_paired$sd_area_under_curve_17OHP <-
+  (((profile_summaries_maintained_paired$mean_area_under_curve_17OHP -
+  profile_summaries_maintained_paired$area_under_curve_17OHP.x)^2) / 2)^0.5
+profile_summaries_maintained_paired$cv_area_under_curve_17OHP <-
+  (profile_summaries_maintained_paired$sd_area_under_curve_17OHP /
+  profile_summaries_maintained_paired$mean_area_under_curve_17OHP) * 100
+print("both sexes CV of ln auc 17OHP on same dose")
+mean(profile_summaries_maintained_paired$cv_area_under_curve_17OHP)
+
+profile_summaries_maintained_paired$mean_area_under_curve_Androstenedione <-
+  (profile_summaries_maintained_paired$area_under_curve_Androstenedione.x +
+  profile_summaries_maintained_paired$area_under_curve_Androstenedione.y ) /2
+profile_summaries_maintained_paired$sd_area_under_curve_Androstenedione <-
+  (((profile_summaries_maintained_paired$mean_area_under_curve_Androstenedione -
+  profile_summaries_maintained_paired$area_under_curve_Androstenedione.x)^2) / 2)^0.5
+profile_summaries_maintained_paired$cv_area_under_curve_Androstenedione <-
+  (profile_summaries_maintained_paired$sd_area_under_curve_Androstenedione /
+  profile_summaries_maintained_paired$mean_area_under_curve_Androstenedione) * 100
+print("both sexes CV of ln auc Androstenedione on same dose")
+mean(profile_summaries_maintained_paired$cv_area_under_curve_Androstenedione)
+
+profile_summaries_maintained_paired$mean_ln_area_under_curve_17OHP <-
+  (profile_summaries_maintained_paired$ln_area_under_curve_17OHP.x +
+  profile_summaries_maintained_paired$ln_area_under_curve_17OHP.y ) /2
+profile_summaries_maintained_paired$sd_ln_area_under_curve_17OHP <-
+  (((profile_summaries_maintained_paired$mean_ln_area_under_curve_17OHP -
+  profile_summaries_maintained_paired$ln_area_under_curve_17OHP.x)^2) / 2)^0.5
+profile_summaries_maintained_paired$cv_ln_area_under_curve_17OHP <-
+  (profile_summaries_maintained_paired$sd_ln_area_under_curve_17OHP /
+  profile_summaries_maintained_paired$mean_ln_area_under_curve_17OHP) * 100
+print("both sexes CV of ln auc 17OHP on same dose")
+mean(profile_summaries_maintained_paired$cv_ln_area_under_curve_17OHP)
+
+profile_summaries_maintained_paired$mean_ln_area_under_curve_Androstenedione <-
+  (profile_summaries_maintained_paired$ln_area_under_curve_Androstenedione.x +
+  profile_summaries_maintained_paired$ln_area_under_curve_Androstenedione.y ) /2
+profile_summaries_maintained_paired$sd_ln_area_under_curve_Androstenedione <-
+  (((profile_summaries_maintained_paired$mean_ln_area_under_curve_Androstenedione -
+  profile_summaries_maintained_paired$ln_area_under_curve_Androstenedione.x)^2) / 2)^0.5
+profile_summaries_maintained_paired$cv_ln_area_under_curve_Androstenedione <-
+  (profile_summaries_maintained_paired$sd_ln_area_under_curve_Androstenedione /
+  profile_summaries_maintained_paired$mean_ln_area_under_curve_Androstenedione) * 100
+print("both sexes CV of ln auc Androstenedione on same dose")
+mean(profile_summaries_maintained_paired$cv_ln_area_under_curve_Androstenedione)
+
+```
+
+```{r, subset out male and females from the paired frame, and report the CV}
+profile_summaries_maintained_paired_male <- subset(profile_summaries_maintained_paired, sex.x=="M")
+print("male CV of  auc 17OHP on same dose")
+mean(profile_summaries_maintained_paired_male$cv_area_under_curve_17OHP)
+
+profile_summaries_maintained_paired_fema <- subset(profile_summaries_maintained_paired, sex.x=="F")
+print("female CV of  auc 17OHP on same dose")
+mean(profile_summaries_maintained_paired_fema$cv_area_under_curve_17OHP)
+
+profile_summaries_maintained_paired_male <- subset(profile_summaries_maintained_paired, sex.x=="M")
+print("male CV of  auc Androstenedione on same dose")
+mean(profile_summaries_maintained_paired_male$cv_area_under_curve_Androstenedione)
+
+profile_summaries_maintained_paired_fema <- subset(profile_summaries_maintained_paired, sex.x=="F")
+print("female CV of  auc Androstenedione on same dose")
+mean(profile_summaries_maintained_paired_fema$cv_area_under_curve_Androstenedione)
+
+
+profile_summaries_maintained_paired_male <- subset(profile_summaries_maintained_paired, sex.x=="M")
+print("male CV of ln auc 17OHP on same dose")
+mean(profile_summaries_maintained_paired_male$cv_ln_area_under_curve_17OHP)
+
+profile_summaries_maintained_paired_fema <- subset(profile_summaries_maintained_paired, sex.x=="F")
+print("female CV of ln auc 17OHP on same dose")
+mean(profile_summaries_maintained_paired_fema$cv_ln_area_under_curve_17OHP)
+
+profile_summaries_maintained_paired_male <- subset(profile_summaries_maintained_paired, sex.x=="M")
+print("male CV of ln auc Androstenedione on same dose")
+mean(profile_summaries_maintained_paired_male$cv_ln_area_under_curve_Androstenedione)
+
+profile_summaries_maintained_paired_fema <- subset(profile_summaries_maintained_paired, sex.x=="F")
+print("female CV of ln auc Androstenedione on same dose")
+mean(profile_summaries_maintained_paired_fema$cv_ln_area_under_curve_Androstenedione)
+```
+
+now we have our profile summaries paired within patients that were maintained on the same dose, we can regress them against each other
+
+```{r, plots of 17OHP within patients separated sex by colour on same dose}
+regression_of_auc_17OHP_within_patients <-
+  ggplot(data=profile_summaries_maintained_paired, 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, 
+              intercept=0, 
+              colour="lightgreen") +
+  geom_point(data=profile_summaries_maintained_paired_fema,
+             alpha=0.8,
+             size=2,
+             shape=1,
+             stroke=2,
+             colour="tomato") +
+  geom_point(data=profile_summaries_maintained_paired_male,
+             alpha=0.8,
+             size=2,
+             stroke=2,
+             shape=4,
+             colour="blue4") +
+  geom_smooth(
+    data=profile_summaries_maintained_paired_male,
+    method="lm", 
+    linetype="dashed",
+    colour="blue4", 
+    linewidth=2,
+    se=F) +
+  geom_smooth(
+    data=profile_summaries_maintained_paired_fema,
+    method="lm", 
+    linetype="dashed",
+    colour="tomato", 
+    linewidth=2,
+    se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  scale_y_continuous(breaks=c(seq(1,9, by=2))) +
+  scale_x_continuous(breaks=c(seq(1,9, by=2))) +
+  coord_cartesian(xlim=c(1,9),ylim=c(1,9)) +
+  themepowerpoint +
+  theme(panel.background = element_rect(fill="white",colour="white"), 
+                               #legend.position = "none",
+                               #panel.grid.major = element_blank() ,
+                               axis.line.x.bottom = element_line(colour="black") ,
+                               axis.line.y.left = element_line(colour="black") ,
+                               #plot.title = element_text(size=12, hjust=0.5),
+                               plot.title = element_blank(),
+                               plot.subtitle = element_blank(),
+                               axis.text.x=element_text(size=12),
+                               axis.text.y=element_text(size=12),
+                               #axis.title.y=element_text(size=14, face="bold"),
+                               axis.title.y=element_blank(),
+                               axis.title.x=element_blank(),
+                               #change stuff for facet labels
+                               strip.background =element_rect(fill="black", colour="black"),
+                               strip.text = element_text(colour = 'white', size=12))
+regression_of_auc_17OHP_within_patients
+model_regression_of_auc_17OHP_within_patients <-
+  lm(data=profile_summaries_maintained_paired, 
+       formula=ln_area_under_curve_17OHP.y ~ ln_area_under_curve_17OHP.x)
+dir.create("within_patient_regression")
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients")
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses")
+sink("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses/within_patients_model_fit_17OHP.txt")
+print("Number of paired visits in both sexes model:")
+print(nrow(profile_summaries_maintained_paired))
+summary(model_regression_of_auc_17OHP_within_patients)
+sink()
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_patients.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses", 
+       plot = regression_of_auc_17OHP_within_patients, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_auc_Androstenedione_within_patients <-
+  ggplot(data=profile_summaries_maintained_paired, 
+       aes(x=ln_area_under_curve_Androstenedione.x,
+           y=ln_area_under_curve_Androstenedione.y)) + 
+  geom_abline(slope=1, 
+              intercept=0, 
+              colour="lightgreen") +
+  geom_point(data=profile_summaries_maintained_paired_fema,
+             alpha=0.8,
+             size=2,
+             shape=1,
+             stroke=2,
+             colour="tomato") +
+  geom_point(data=profile_summaries_maintained_paired_male,
+             alpha=0.8,
+             size=2,
+             stroke=2,
+             shape=4,
+             colour="blue4") +
+  geom_smooth(
+    data=profile_summaries_maintained_paired_male,
+    method="lm", 
+    linetype="dashed",
+    colour="blue4", 
+    linewidth=2,
+    se=F) +
+  geom_smooth(
+    data=profile_summaries_maintained_paired_fema,
+    method="lm", 
+    linetype="dashed",
+    colour="tomato", 
+    linewidth=2,
+    se=F) +
+  labs(x="Earlier visit ln AUC Androstenedione",
+       y="Later visit ln AUC Androstenedione") +
+  coord_cartesian(xlim=c(0,6.5),ylim=c(0,6.5)) +
+  themepowerpoint +
+  theme(panel.background = element_rect(fill="white",colour="white"), 
+                               #legend.position = "none",
+                               #panel.grid.major = element_blank() ,
+                               axis.line.x.bottom = element_line(colour="black") ,
+                               axis.line.y.left = element_line(colour="black") ,
+                               #plot.title = element_text(size=12, hjust=0.5),
+                               plot.title = element_blank(),
+                               plot.subtitle = element_blank(),
+                               axis.text.x=element_text(size=12),
+                               axis.text.y=element_text(size=12),
+                               #axis.title.y=element_text(size=14, face="bold"),
+                               axis.title.y=element_blank(),
+                               axis.title.x=element_blank(),
+                               #change stuff for facet labels
+                               strip.background =element_rect(fill="black", colour="black"),
+                               strip.text = element_text(colour = 'white', size=12))
+regression_of_auc_Androstenedione_within_patients
+model_regression_of_auc_Androstenedione_within_patients <-
+  lm(data=profile_summaries_maintained_paired, 
+       formula=ln_area_under_curve_Androstenedione.y ~ ln_area_under_curve_Androstenedione.x)
+dir.create("within_patient_regression/regression_of_auc_Androstenedione_within_patients")
+dir.create("within_patient_regression/regression_of_auc_Androstenedione_within_patients/maintained_doses")
+sink("within_patient_regression/regression_of_auc_Androstenedione_within_patients/maintained_doses/within_patients_model_fit_Androstenedione.txt")
+summary(model_regression_of_auc_Androstenedione_within_patients)
+sink()
+dir.create("within_patient_regression/regression_of_auc_Androstenedione_within_patients/maintained_doses")
+ggsave(filename=paste("regression_of_auc_Androstenedione_within_patients.tif"), 
+       path="./within_patient_regression/regression_of_auc_Androstenedione_within_patients/maintained_doses", 
+       plot = regression_of_auc_Androstenedione_within_patients, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+
+regression_of_auc_17OHP_within_fema <-
+  ggplot(data=profile_summaries_maintained_paired_fema, 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle",
+             size=1, colour="red") +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  coord_cartesian(xlim=c(1,7.5),ylim=c(1,7.5)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_fema
+
+model_regression_of_auc_17OHP_within_fema <-
+  lm(data=profile_summaries_maintained_paired_fema, 
+       formula=ln_area_under_curve_17OHP.y ~ ln_area_under_curve_17OHP.x)
+model_regression_of_auc_Androstenedione_within_fema <-
+  lm(data=profile_summaries_maintained_paired_fema, 
+       formula=ln_area_under_curve_Androstenedione.y ~ ln_area_under_curve_Androstenedione.x)
+sink("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses/fema_model_fit.txt")
+print("Number of paired visits in female model:")
+print(nrow(profile_summaries_maintained_paired_fema))
+print("From number of fema patients:")
+length(unique(profile_summaries_maintained_paired_fema$id.x))
+
+summary(model_regression_of_auc_17OHP_within_fema)
+summary(model_regression_of_auc_Androstenedione_within_fema)
+sink()
+
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_fema.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses", 
+       plot = regression_of_auc_17OHP_within_fema, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_auc_17OHP_within_male <-
+  ggplot(data=profile_summaries_maintained_paired_male, 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle",
+             size=1,
+             colour="blue",
+             aes()) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  coord_cartesian(xlim=c(1,7.5),ylim=c(1,7.5)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_male
+
+model_regression_of_auc_17OHP_within_male <-
+  lm(data=profile_summaries_maintained_paired_male, 
+       formula=ln_area_under_curve_17OHP.y ~ ln_area_under_curve_17OHP.x)
+model_regression_of_auc_Androstenedione_within_male <-
+  lm(data=profile_summaries_maintained_paired_male, 
+       formula=ln_area_under_curve_Androstenedione.y ~ ln_area_under_curve_Androstenedione.x)
+sink("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses/male_model_fit.txt")
+print("Number of paired visits in male model:")
+print(nrow(profile_summaries_maintained_paired_male))
+print("From number of male patients:")
+length(unique(profile_summaries_maintained_paired_male$id.x))
+summary(model_regression_of_auc_17OHP_within_male)
+summary(model_regression_of_auc_Androstenedione_within_male)
+sink()
+
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_male.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/maintained_doses", 
+       plot = regression_of_auc_17OHP_within_male, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+*************************************
+combining all dose increases
+*************************************
+
+```{r, subsetting visits next to each other where dose was increased on the same preparation}
+#now we subset only the visits that increased their dose at the next visit - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_increased_at_next_visit <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_increase_at_next_visit==1)
+nrow(profile_summaries_with_dosing_same_preparation_increased_at_next_visit)
+
+#then we want to take all the profiles that were increased at the previous visit
+profile_summaries_with_dosing_same_preparation_increased_from_previous_visit <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_increase_from_previous_visit==1)
+nrow(profile_summaries_with_dosing_same_preparation_increased_from_previous_visit)
+
+#note here we have to get rid of visit 2 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_second_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_increased_from_previous_visit,
+         AVISITN==2 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_second_chronocort_visit)
+
+profile_summaries_with_dosing_same_preparation_increased_from_previous_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_increased_from_previous_visit, 
+         !(id_visit %in% profile_summaries_with_dosing_to_remove_for_second_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_increased_from_previous_visit)
+
+print("Note that we lose two pairings there, from 78 to 76. This is not an error in coding, two of these 78 did have a dose change, but did not have a profile done at the latter visit (601/002 in Chronocort arm, 201/014 in the standard arm)")
+```
+
+```{r, pairing visits that were next to each other}
+profile_summaries_increased_paired_one_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_increased_at_next_visit,
+   profile_summaries_with_dosing_same_preparation_increased_from_previous_visit,
+   by = (c("id_next_visit"="id_visit")))
+print("we have NAs that turns the following 78 into 76 actual paired profiles")
+nrow(profile_summaries_increased_paired_one_gap)
+
+visual_check <- profile_summaries_increased_paired_one_gap[,c("id.x", 
+                                 "id.y",
+                                 "id_next_visit",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y",
+                                 "total_increase_at_next_visit.x",
+                                 "total_increase_at_next_visit.y")]
+```
+
+now add to this data set by pairing visits that were two visits apart
+
+```{r, subsetting visits two apart where dose was increased on the same preparation}
+#now we subset only the visits that increased their dose at two visits time - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_increased_in_two_visits_time <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_in_two_visits_is_increased==1)
+nrow(profile_summaries_with_dosing_same_preparation_increased_in_two_visits_time)
+#then we want to take all the profiles that were increased two visits ago
+profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_increase_from_two_visits_ago==1)
+nrow(profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago)
+#note here we have to get rid of visit 3 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_third_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago,
+         AVISITN==3 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_third_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago, 
+         !(id_visit %in% 
+             profile_summaries_with_dosing_to_remove_for_third_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago)
+print("we lose one here due to DIUR-005_201_014 who didn't have a profile done at visit 4, but is flagged because was on a higher dose at this stage")
+```
+
+we therefore have another two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits two apart}
+profile_summaries_increased_paired_two_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_increased_in_two_visits_time,
+   profile_summaries_with_dosing_same_preparation_increased_from_two_visits_ago,
+   by = (c("id_two_visits_time"="id_visit")))
+
+nrow(profile_summaries_increased_paired_two_gap)
+print("because of DIUR-005_201_014 who didn't have a profile done at visit 4, but is flagged because was on a higher dose at this stage, we have one x NA in the .y column")
+visual_check <- 
+  profile_summaries_increased_paired_two_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+```
+
+now add to this data set by pairing visits that were three visits apart
+
+```{r, subsetting visits three apart where dose was increased on the same preparation}
+#now we subset only the visits that increased their dose at three visits time - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_increased_in_three_visits_time <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_in_three_visits_is_increased==1)
+nrow(profile_summaries_with_dosing_same_preparation_increased_in_three_visits_time)
+#then we want to take all the profiles that were increased two visits ago
+profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_increase_from_three_visits_ago==1)
+nrow(profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago)
+#note here we have to get rid of visit 4 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago,
+         AVISITN==4 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago, 
+         !(id_visit %in% 
+             profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago)
+print("we lose one here again due to DIUR-005_201_014 who didn't have a profile done at visit 4, but is flagged because was on a higher dose at this stage")
+```
+
+we therefore have another two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits three apart}
+profile_summaries_increased_paired_three_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_increased_in_three_visits_time,
+   profile_summaries_with_dosing_same_preparation_increased_from_three_visits_ago,
+   by = (c("id_three_visits_time"="id_visit")))
+nrow(profile_summaries_increased_paired_three_gap)
+visual_check <- 
+  profile_summaries_increased_paired_three_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+print("because of DIUR-005_201_014 who didn't have a profile done at visit 4, but is flagged because was on a higher dose at this stage, we have one x NA in the .y column")
+```
+
+***************************
+combining all paired profiles for those increased on a dose
+***************************
+
+
+```{r, combining all paired profiles for those increased on a dose}
+#before we can bind, we have to tidy up the id columns to ensure they can bind together
+profile_summaries_increased_paired_one_gap$id_next_visit <- NULL
+profile_summaries_increased_paired_one_gap$id_two_visits_time.x <- NULL
+profile_summaries_increased_paired_one_gap$id_three_visits_time.x <- NULL
+
+profile_summaries_increased_paired_two_gap$id_next_visit.x <- NULL
+profile_summaries_increased_paired_two_gap$id_two_visits_time <- NULL
+profile_summaries_increased_paired_two_gap$id_three_visits_time.x <- NULL
+
+profile_summaries_increased_paired_three_gap$id_next_visit.x <- NULL
+profile_summaries_increased_paired_three_gap$id_two_visits_time.x <- NULL
+profile_summaries_increased_paired_three_gap$id_three_visits_time <- NULL
+
+profile_summaries_increased_paired <- 
+  rbind(profile_summaries_increased_paired_one_gap,
+      profile_summaries_increased_paired_two_gap,
+      profile_summaries_increased_paired_three_gap)
+
+#now we can find out how much the dose increased by, so we can add that as a size to our graphs
+profile_summaries_increased_paired$total_daily_hydrocortisone_equivalent_increase <-  
+  profile_summaries_increased_paired$total_daily_hydrocortisone_equivalent_at_visit.y -
+  profile_summaries_increased_paired$total_daily_hydrocortisone_equivalent_at_visit.x 
+
+#also give us a percentage dose increase
+profile_summaries_increased_paired$percentage_total_daily_hydrocortisone_equivalent_increase <- 
+  profile_summaries_increased_paired$total_daily_hydrocortisone_equivalent_increase / 
+  profile_summaries_increased_paired$total_daily_hydrocortisone_equivalent_at_visit.x *
+  100
+
+#we also need how much the AUC changed by
+profile_summaries_increased_paired$ln_auc_17OHP_early_visit_minus_later_visit <-
+  profile_summaries_increased_paired$ln_area_under_curve_17OHP.x -
+  profile_summaries_increased_paired$ln_area_under_curve_17OHP.y
+
+#we also need how much the AUC changed by as a percentage
+profile_summaries_increased_paired$percentage_ln_auc_17OHP_early_visit_minus_later_visit <-
+  profile_summaries_increased_paired$ln_auc_17OHP_early_visit_minus_later_visit /
+  profile_summaries_increased_paired$ln_area_under_curve_17OHP.x *
+  100
+
+freq(profile_summaries_increased_paired$total_daily_hydrocortisone_equivalent_increase)
+```
+
+now we have our profile summaries paired within patients that were maintained on the same dose, we can regress them against each other
+
+```{r, separate plots by sex and colour by visit or preparation (don't copy paste, just rerun)}
+regression_of_auc_17OHP_within_patients <-
+  ggplot(data=profile_summaries_increased_paired, 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=SEX.x,
+                 size=total_daily_hydrocortisone_equivalent_increase),
+             ) +
+  geom_smooth(aes(colour=SEX.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=SEX.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  stat_regline_equation(
+    label.x=0,
+    label.y=7.5, 
+    size=9) +   
+  stat_cor(
+    label.x=0,
+    label.y=7, 
+    size=9) +
+  coord_cartesian(xlim=c(0,10),ylim=c(0,10)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_patients
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_patients.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses", 
+       plot = regression_of_auc_17OHP_within_patients, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_auc_17OHP_within_fema <-
+  ggplot(data=subset(profile_summaries_increased_paired, SEX.x=="F"), 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=ARM.x,
+                 size=total_daily_hydrocortisone_equivalent_increase)) +
+  geom_smooth(aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+              aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  stat_regline_equation(
+    label.x=0,
+    label.y=7.5, 
+    size=9) +   
+  stat_cor(
+    label.x=0,
+    label.y=7, 
+    size=9) +
+  coord_cartesian(xlim=c(0,10),ylim=c(0,10)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_fema
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_fema.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses", 
+       plot = regression_of_auc_17OHP_within_fema, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_auc_17OHP_within_male <-
+  ggplot(data=subset(profile_summaries_increased_paired, SEX.x=="M"), 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=ARM.x,
+                 size=total_daily_hydrocortisone_equivalent_increase)) +
+  geom_smooth(aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+              aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  stat_regline_equation(
+    label.x=0,
+    label.y=7.5, 
+    size=9) +   
+  stat_cor(
+    label.x=0,
+    label.y=7, 
+    size=9) +
+  coord_cartesian(xlim=c(0,10),ylim=c(0,10)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_male
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_male.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses", 
+       plot = regression_of_auc_17OHP_within_male, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+*************************************
+Looking at dose decreases
+*************************************
+
+```{r, subsetting visits next to each other where dose was decreased on the same preparation}
+#now we subset only the visits that decreased their dose at the next visit - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_decreased_at_next_visit <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_decreased_at_next_visit==1)
+nrow(profile_summaries_with_dosing_same_preparation_decreased_at_next_visit)
+
+#then we want to take all the profiles that were decreased at the previous visit
+profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_decrease_from_previous_visit==1)
+nrow(profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit)
+
+#note here we have to get rid of visit 2 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_second_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit,
+         AVISITN==2 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_second_chronocort_visit)
+
+profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit, 
+         !(id_visit %in% profile_summaries_with_dosing_to_remove_for_second_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit)
+```
+
+```{r}
+profile_summaries_decreased_paired_one_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_decreased_at_next_visit,
+   profile_summaries_with_dosing_same_preparation_decreased_from_previous_visit,
+   by = (c("id_next_visit"="id_visit")))
+
+nrow(profile_summaries_decreased_paired_one_gap)
+
+visual_check <- 
+  profile_summaries_decreased_paired_one_gap[,c(
+  "id.x", 
+  "id.y",
+  "id_next_visit",
+  "ARM.x",
+  "ARM.y",
+  "visit_number.x",
+  "visit_number.y",
+  "area_under_curve_17OHP.x",
+  "area_under_curve_17OHP.y",
+  "total_decreased_at_next_visit.x",
+  "total_decreased_at_next_visit.y")]
+```
+
+now add to this data set by pairing visits that were two visits apart
+
+```{r, subsetting visits two apart where dose was decreased on the same preparation}
+#now we subset only the visits that decreased their dose at two visits time - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_decreased_in_two_visits_time <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_in_two_visits_is_decreased==1)
+nrow(profile_summaries_with_dosing_same_preparation_decreased_in_two_visits_time)
+#then we want to take all the profiles that were decreased two visits ago
+profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_decrease_from_two_visits_ago==1)
+nrow(profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago)
+#note here we have to get rid of visit 3 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_third_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago,
+         AVISITN==3 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_third_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago, 
+         !(id_visit %in% 
+             profile_summaries_with_dosing_to_remove_for_third_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago)
+```
+
+we therefore have another two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits two apart}
+profile_summaries_decreased_paired_two_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_decreased_in_two_visits_time,
+   profile_summaries_with_dosing_same_preparation_decreased_from_two_visits_ago,
+   by = (c("id_two_visits_time"="id_visit")))
+
+nrow(profile_summaries_decreased_paired_two_gap)
+print("because of DIUR-005_201_014 who didn't have a profile done at visit 4, but is flagged because was on a higher dose at this stage, we have one x NA in the .y column")
+visual_check <- 
+  profile_summaries_decreased_paired_two_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+```
+
+now add to this data set by pairing visits that were three visits apart
+
+```{r, subsetting visits three apart where dose was decreased on the same preparation}
+#now we subset only the visits that decreased their dose at three visits time - this is the first profile in any pair
+profile_summaries_with_dosing_same_preparation_decreased_in_three_visits_time <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_in_three_visits_is_decreased==1)
+nrow(profile_summaries_with_dosing_same_preparation_decreased_in_three_visits_time)
+#then we want to take all the profiles that were decreased two visits ago
+profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation,
+         total_decrease_from_three_visits_ago==1)
+nrow(profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago)
+#note here we have to get rid of visit 4 in the chronocort arm, as they changed preparation
+profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit <-
+  subset(profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago,
+         AVISITN==4 & ARM=="Chronocort")
+nrow(profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit)
+profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago <-
+  subset(profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago, 
+         !(id_visit %in% 
+             profile_summaries_with_dosing_to_remove_for_fourth_chronocort_visit$id_visit))
+nrow(profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago)
+
+```
+
+we therefore have another two frames that we want to stagger and join together
+
+```{r, pairing previous profiles of visits three apart}
+profile_summaries_decreased_paired_three_gap <-
+  left_join(
+   profile_summaries_with_dosing_same_preparation_decreased_in_three_visits_time,
+   profile_summaries_with_dosing_same_preparation_decreased_from_three_visits_ago,
+   by = (c("id_three_visits_time"="id_visit")))
+nrow(profile_summaries_decreased_paired_three_gap)
+visual_check <- 
+  profile_summaries_decreased_paired_three_gap[,c("id.x", 
+                                 "id.y",
+                                 "ARM.x",
+                                 "ARM.y",
+                                 "visit_number.x",
+                                 "visit_number.y",
+                                 "area_under_curve_17OHP.x",
+                                 "area_under_curve_17OHP.y")]
+
+```
+
+***************************
+combining all paired profiles for those decreased on a dose
+***************************
+
+```{r, combining all paired profiles for those decreased on a dose}
+#before we can bind, we have to tidy up the id columns to ensure they can bind together
+profile_summaries_decreased_paired_one_gap$id_next_visit <- NULL
+profile_summaries_decreased_paired_one_gap$id_two_visits_time.x <- NULL
+profile_summaries_decreased_paired_one_gap$id_three_visits_time.x <- NULL
+
+profile_summaries_decreased_paired_two_gap$id_next_visit.x <- NULL
+profile_summaries_decreased_paired_two_gap$id_two_visits_time <- NULL
+profile_summaries_decreased_paired_two_gap$id_three_visits_time.x <- NULL
+
+profile_summaries_decreased_paired_three_gap$id_next_visit.x <- NULL
+profile_summaries_decreased_paired_three_gap$id_two_visits_time.x <- NULL
+profile_summaries_decreased_paired_three_gap$id_three_visits_time <- NULL
+
+profile_summaries_decreased_paired <- 
+  rbind(profile_summaries_decreased_paired_one_gap,
+      profile_summaries_decreased_paired_two_gap,
+      profile_summaries_decreased_paired_three_gap)
+
+#now we can find out how much the dose decreased by, so we can add that as a size to our graphs
+profile_summaries_decreased_paired$total_daily_hydrocortisone_equivalent_decrease <-  
+  profile_summaries_decreased_paired$total_daily_hydrocortisone_equivalent_at_visit.x - 
+  profile_summaries_decreased_paired$total_daily_hydrocortisone_equivalent_at_visit.y
+
+#also give us a percentage dose decrease
+profile_summaries_decreased_paired$percentage_total_daily_hydrocortisone_equivalent_decrease <- 
+  profile_summaries_decreased_paired$total_daily_hydrocortisone_equivalent_decrease / 
+  profile_summaries_decreased_paired$total_daily_hydrocortisone_equivalent_at_visit.x *
+  100
+
+#we also need how much the AUC changed by
+profile_summaries_decreased_paired$ln_auc_17OHP_early_visit_minus_later_visit <-
+  profile_summaries_decreased_paired$ln_area_under_curve_17OHP.x -
+  profile_summaries_decreased_paired$ln_area_under_curve_17OHP.y
+
+#we also need how much the AUC changed by as a percentage
+profile_summaries_decreased_paired$percentage_ln_auc_17OHP_early_visit_minus_later_visit <-
+  profile_summaries_decreased_paired$ln_auc_17OHP_early_visit_minus_later_visit /
+  profile_summaries_decreased_paired$ln_area_under_curve_17OHP.x *
+  100
+  
+
+freq(profile_summaries_decreased_paired$total_daily_hydrocortisone_equivalent_decrease)
+```
+
+now we have our profile summaries paired within patients that were maintained on the same dose, we can regress them against each other
+
+```{r, separate plots by sex and colour by visit or preparation (don't copy paste, just rerun)}
+regression_of_auc_17OHP_within_patients <-
+  ggplot(data=profile_summaries_decreased_paired, 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=SEX.x,
+                 size=total_daily_hydrocortisone_equivalent_decrease),
+             ) +
+  geom_smooth(aes(colour=SEX.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=SEX.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  stat_regline_equation(
+    label.x=0,
+    label.y=7.5, 
+    size=9) +   
+  stat_cor(
+    label.x=0,
+    label.y=7, 
+    size=9) +
+  coord_cartesian(xlim=c(0,10),ylim=c(0,10)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_patients
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/decreased_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_patients.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/decreased_doses", 
+       plot = regression_of_auc_17OHP_within_patients, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_auc_17OHP_within_fema <-
+  ggplot(data=subset(profile_summaries_decreased_paired, SEX.x=="F"), 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle", size=2,
+             aes(colour=ARM.x,
+                 size=total_daily_hydrocortisone_equivalent_decrease)) +
+  geom_smooth(aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+              aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  stat_regline_equation(
+    label.x=0,
+    label.y=7.5, 
+    size=9) +   
+  stat_cor(
+    label.x=0,
+    label.y=7, 
+    size=9) +
+  coord_cartesian(xlim=c(0,10),ylim=c(0,10)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_fema
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/decreased_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_fema.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/decreased_doses", 
+       plot = regression_of_auc_17OHP_within_fema, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_auc_17OHP_within_male <-
+  ggplot(data=subset(profile_summaries_decreased_paired, SEX.x=="M"), 
+       aes(x=ln_area_under_curve_17OHP.x,
+           y=ln_area_under_curve_17OHP.y)) + 
+  geom_abline(slope=1, intercept=0, colour="lightgreen") +
+  geom_point(alpha=0.8,
+             shape="circle", size=2,
+             aes(colour=ARM.x,
+                 size=total_daily_hydrocortisone_equivalent_decrease)) +
+  geom_smooth(aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+              aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs(x="Earlier visit ln AUC 17OHP",
+       y="Later visit ln AUC 17OHP") +
+  stat_regline_equation(
+    label.x=0,
+    label.y=7.5, 
+    size=9) +   
+  stat_cor(
+    label.x=0,
+    label.y=7, 
+    size=9) +
+  coord_cartesian(xlim=c(0,10),ylim=c(0,10)) +
+  themepowerpointlegend
+regression_of_auc_17OHP_within_male
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/decreased_doses")
+ggsave(filename=paste("regression_of_auc_17OHP_within_male.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/decreased_doses", 
+       plot = regression_of_auc_17OHP_within_male, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+**********************
+combining all profiles together
+**********************
+
+```{r, combining all the profiles that were paired with any gap between them}
+all_profile_summaries_paired_one_gap <-
+  left_join(
+   profile_summaries_with_dosing,
+   profile_summaries_with_dosing,
+   by = (c("id_next_visit"="id_visit")))
+#get rid of anyone who doesn't have a result at y
+all_profile_summaries_paired_one_gap <- 
+  subset(all_profile_summaries_paired_one_gap, !is.na(area_under_curve_17OHP.y))
+nrow(all_profile_summaries_paired_one_gap)
+visual_check_1 <- 
+  all_profile_summaries_paired_one_gap[,c(
+    "id.x", 
+    "id.y",
+    "ARM.x",
+    "ARM.y",
+    "visit_number.x",
+    "visit_number.y",
+    "area_under_curve_17OHP.x",
+    "area_under_curve_17OHP.y")]
+
+all_profile_summaries_paired_two_gap <-
+  left_join(
+   profile_summaries_with_dosing,
+   profile_summaries_with_dosing,
+   by = (c("id_two_visits_time"="id_visit")))
+#get rid of anyone who doesn't have a result at y
+all_profile_summaries_paired_two_gap <- 
+  subset(all_profile_summaries_paired_two_gap, !is.na(area_under_curve_17OHP.y))
+nrow(all_profile_summaries_paired_two_gap)
+visual_check_2 <- 
+  all_profile_summaries_paired_two_gap[,c(
+    "id.x", 
+    "id.y",
+    "ARM.x",
+    "ARM.y",
+    "visit_number.x",
+    "visit_number.y",
+    "area_under_curve_17OHP.x",
+    "area_under_curve_17OHP.y")]
+
+all_profile_summaries_paired_three_gap <-
+  left_join(
+   profile_summaries_with_dosing,
+   profile_summaries_with_dosing,
+   by = (c("id_three_visits_time"="id_visit")))
+nrow(all_profile_summaries_paired_three_gap)
+#get rid of anyone who doesn't have a result at y
+all_profile_summaries_paired_three_gap <- 
+  subset(all_profile_summaries_paired_three_gap, !is.na(area_under_curve_17OHP.y))
+visual_check_3 <- 
+  all_profile_summaries_paired_three_gap[,c(
+    "id.x", 
+    "id.y",
+    "ARM.x",
+    "ARM.y",
+    "visit_number.x",
+    "visit_number.y",
+    "area_under_curve_17OHP.x",
+    "area_under_curve_17OHP.y")]
+
+#before we can bind, we have to tidy up the id columns to ensure they can bind together
+all_profile_summaries_paired_one_gap$id_next_visit <- NULL
+all_profile_summaries_paired_one_gap$id_two_visits_time.x <- NULL
+all_profile_summaries_paired_one_gap$id_three_visits_time.x <- NULL
+
+all_profile_summaries_paired_two_gap$id_next_visit.x <- NULL
+all_profile_summaries_paired_two_gap$id_two_visits_time <- NULL
+all_profile_summaries_paired_two_gap$id_three_visits_time.x <- NULL
+
+all_profile_summaries_paired_three_gap$id_next_visit.x <- NULL
+all_profile_summaries_paired_three_gap$id_two_visits_time.x <- NULL
+all_profile_summaries_paired_three_gap$id_three_visits_time <- NULL
+
+all_profile_summaries_paired <-
+  rbind(
+    all_profile_summaries_paired_one_gap,
+    all_profile_summaries_paired_two_gap,
+    all_profile_summaries_paired_three_gap
+  )
+```
+
+
+```{r, plotting histograms showing proportion taking different values of steroid}
+#plot a histogram of the dose for each preparation at the second visit
+hydrocortisone_0_inflated_histogram <- 
+  ggplot(data=subset(all_profile_summaries_paired), aes(x=absolute_hydrocortisone_at_visit.y)) + 
+  geom_histogram(bins=50, aes(fill=SEX.x)) + 
+  scale_fill_manual(values = c("M"= "blue", "F"= "red")) + 
+  themepowerpointtitle 
+hydrocortisone_0_inflated_histogram
+
+dir.create("histograms")
+dir.create("histograms/zero_inflated_absolute_markers")
+ggsave(filename=paste0("hydrocortisone_0_inflated_histogram", ".tif"), 
+       path="histograms/zero_inflated_absolute_markers", 
+       plot = hydrocortisone_0_inflated_histogram, 
+       device="tiff",  
+       width=12, height=6, 
+       compression = "lzw", limitsize=F)
+
+prednisolone_0_inflated_histogram <- 
+  ggplot(data=subset(all_profile_summaries_paired), aes(x=absolute_prednisolone_at_visit.y)) + 
+  geom_histogram(bins=50, aes(fill=SEX.x)) + 
+  scale_fill_manual(values = c("M"= "blue", "F"= "red")) + 
+  themepowerpointtitle 
+prednisolone_0_inflated_histogram
+
+dir.create("histograms/zero_inflated_absolute_markers")
+ggsave(filename=paste0("prednisolone_0_inflated_histogram", ".tif"), 
+       path="./histograms/zero_inflated_absolute_markers/", 
+       plot = prednisolone_0_inflated_histogram, 
+       device="tiff",  
+       width=12, height=6, 
+       compression = "lzw", limitsize=F)
+
+prednisone_0_inflated_histogram <- 
+  ggplot(data=subset(all_profile_summaries_paired), aes(x=absolute_prednisone_at_visit.y)) + 
+  geom_histogram(bins=50, aes(fill=SEX.x)) + 
+  scale_fill_manual(values = c("M"= "blue", "F"= "red")) + 
+  themepowerpointtitle 
+prednisone_0_inflated_histogram
+
+dir.create("histograms/zero_inflated_absolute_markers")
+ggsave(filename=paste0("prednisone_0_inflated_histogram", ".tif"), 
+       path="./histograms/zero_inflated_absolute_markers/", 
+       plot = prednisone_0_inflated_histogram, 
+       device="tiff",  
+       width=12, height=6, 
+       compression = "lzw", limitsize=F)
+
+dexamethasone_0_inflated_histogram <- 
+  ggplot(data=subset(all_profile_summaries_paired), aes(x=absolute_dexamethasone_at_visit.y)) + 
+  geom_histogram(bins=50, aes(fill=SEX.x)) + 
+  scale_fill_manual(values = c("M"= "blue", "F"= "red")) + 
+  themepowerpointtitle 
+dexamethasone_0_inflated_histogram
+
+dir.create("histograms/zero_inflated_absolute_markers")
+ggsave(filename=paste0("dexamethasone_0_inflated_histogram", ".tif"), 
+       path="./histograms/zero_inflated_absolute_markers/", 
+       plot = dexamethasone_0_inflated_histogram, 
+       device="tiff",  
+       width=12, height=6, 
+       compression = "lzw", limitsize=F)
+
+
+#then we can just take those that were originally on prednisolone and finished on different preparations etc in that
+all_profile_summaries_paired_visit_x_not_chronocort <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.x!="Chronocort")
+
+all_profile_summaries_paired_visit_x_prednisolone <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.x=="Prednisolone")
+
+all_profile_summaries_paired_visit_x_hydrocortisone <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.x=="Hydrocortisone")
+
+all_profile_summaries_paired_visit_x_prednisolone_or_hydrocortisone <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.x=="Prednisolone"| 
+         preparation_at_visit.x=="Hydrocortisone")
+
+all_profile_summaries_paired_initial_prednisolone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.x=="Prednisolone")
+
+all_profile_summaries_paired_initial_hydrocortisone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.x=="Hydrocortisone")
+
+all_profile_summaries_paired_initial_prednisolone_or_hydrocortisone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.x=="Prednisolone" | 
+         pre_trial_steroid_preparation.x=="Hydrocortisone")
+
+all_profile_summaries_paired_three_gap_initial_prednisolone <-
+  subset(all_profile_summaries_paired_three_gap, 
+         pre_trial_steroid_preparation.x=="Prednisolone")
+
+#took 
+all_profile_summaries_paired_second_visit_hydrocortisone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.y=="Hydrocortisone")
+
+all_profile_summaries_paired_second_visit_prednisolone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.y=="Prednisolone")
+
+all_profile_summaries_paired_second_visit_prednisone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.y=="Prednisone")
+
+all_profile_summaries_paired_second_visit_dexamethasone <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.y=="Dexamethasone")
+
+all_profile_summaries_paired_second_visit_chronocort <-
+  subset(all_profile_summaries_paired, 
+         pre_trial_steroid_preparation.y=="Chronocort")
+```
+
+```{r, looking at the preparations patients were on at their second visit to get summary stats of the population}
+all_profile_summaries_paired_second_visit_preparation_hydrocortisone <-
+  unique(subset(all_profile_summaries_paired, 
+         preparation_at_visit.y=="Hydrocortisone"))
+
+all_profile_summaries_paired_second_visit_preparation_prednisolone <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.y=="Prednisolone")
+
+all_profile_summaries_paired_second_visit_preparation_prednisone <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.y=="Prednisone")
+
+all_profile_summaries_paired_second_visit_preparation_dexamethasone <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.y=="Dexamethasone")
+
+all_profile_summaries_paired_second_visit_preparation_chronocort <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.y=="Chronocort")
+
+all_profile_summaries_paired_second_visit_preparation_mixed <-
+  subset(all_profile_summaries_paired, 
+         preparation_at_visit.y=="mixed_dosing")
+
+all_profile_summaries_paired_second_visit_preparation_mixed_some_prednisone <-
+    subset(all_profile_summaries_paired_second_visit_preparation_mixed, 
+         absolute_prednisone_at_visit.y>0)
+nrow(all_profile_summaries_paired_second_visit_preparation_mixed_some_prednisone)
+unique(all_profile_summaries_paired_second_visit_preparation_mixed_some_prednisone$id.y)
+unique((all_profile_summaries_paired_second_visit_preparation_prednisone$id.y))
+all_profile_summaries_paired_some_prednisone <-
+    subset(all_profile_summaries_paired, 
+         absolute_prednisone_at_visit.y>0)
+nrow(all_profile_summaries_paired_some_prednisone)
+nrow(all_profile_summaries_paired)
+```
+
+
+```{r, summarising frequencies of data from 1st and 4th visits paired}
+freq(all_profile_summaries_paired_three_gap_initial_prednisolone$AVISITN.x)
+freq(all_profile_summaries_paired_three_gap_initial_prednisolone$preparation_at_visit.x)
+freq(all_profile_summaries_paired_three_gap_initial_prednisolone$preparation_at_visit.y)
+freq(all_profile_summaries_paired$preparation_at_visit.y)
+
+all_profile_summaries_paired_visit_one_to_visit_two <-
+  subset(all_profile_summaries_paired_one_gap, visit_number.x==1)
+nrow(all_profile_summaries_paired_visit_one_to_visit_two)
+
+all_profile_summaries_paired_visit_one_to_visit_two_initial_hydrocortisone_or_prednisolone <-
+  subset(all_profile_summaries_paired_visit_one_to_visit_two, 
+         pre_trial_steroid_preparation.x=="Prednisolone" | 
+         pre_trial_steroid_preparation.x=="Hydrocortisone")
+all_profile_summaries_paired_visit_one_to_visit_two_initial_hydrocortisone <-
+  subset(all_profile_summaries_paired_visit_one_to_visit_two, 
+         pre_trial_steroid_preparation.x=="Hydrocortisone")
+all_profile_summaries_paired_visit_one_to_visit_two_initial_prednisolone <-
+  subset(all_profile_summaries_paired_visit_one_to_visit_two, 
+         pre_trial_steroid_preparation.x=="Prednisolone" )
+nrow(all_profile_summaries_paired_visit_one_to_visit_two_initial_hydrocortisone_or_prednisolone)
+```
+
+
+
+*************************
+Quantifying dose increases
+************************
+
+```{r, assessing change in AUC with dose change}
+regression_of_change_in_auc_17OHP_within_patients_with_dose_change <-
+  ggplot(data=profile_summaries_increased_paired, 
+       aes(x=percentage_total_daily_hydrocortisone_equivalent_increase,
+           y=percentage_ln_auc_17OHP_early_visit_minus_later_visit)) + 
+  geom_hline(yintercept=0) +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=SEX.x),
+             ) +
+  geom_smooth(aes(colour=SEX.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=SEX.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs() +
+  stat_regline_equation(
+    label.x=75,
+    label.y=-10, 
+    size=9) +   
+  stat_cor(
+    label.x=75,
+    label.y=-20, 
+    size=9) +
+  coord_cartesian(xlim=c(0,125),ylim=c(-30,80)) +
+
+  themepowerpointlegend
+regression_of_change_in_auc_17OHP_within_patients_with_dose_change
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses")
+ggsave(filename=paste("regression_of_change_in_auc_17OHP_within_patients_with_dose_change.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses", 
+       plot = regression_of_change_in_auc_17OHP_within_patients_with_dose_change, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+regression_of_change_in_auc_17OHP_within_patients_with_dose_change_male <-
+  ggplot(data=subset(profile_summaries_increased_paired, SEX.x=="M"), 
+       aes(x=percentage_total_daily_hydrocortisone_equivalent_increase,
+           y=percentage_ln_auc_17OHP_early_visit_minus_later_visit)) + 
+  geom_hline(yintercept=0) +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=ARM.x),
+             ) +
+  geom_smooth(aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs() +
+  stat_regline_equation(
+    label.x=75,
+    label.y=-10, 
+    size=9) +   
+  stat_cor(
+    label.x=75,
+    label.y=-20, 
+    size=9) +
+  coord_cartesian(xlim=c(0,125),ylim=c(-30,80)) +
+
+
+  themepowerpointlegend
+regression_of_change_in_auc_17OHP_within_patients_with_dose_change_male
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses")
+ggsave(filename=paste("regression_of_change_in_auc_17OHP_within_patients_with_dose_change_male.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses", 
+       plot = regression_of_change_in_auc_17OHP_within_patients_with_dose_change_male, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+
+
+regression_of_change_in_auc_17OHP_within_patients_with_dose_change_fema <-
+  ggplot(data=subset(profile_summaries_increased_paired, SEX.x=="F"), 
+       aes(x=percentage_total_daily_hydrocortisone_equivalent_increase,
+           y=percentage_ln_auc_17OHP_early_visit_minus_later_visit)) + 
+  geom_hline(yintercept=0) +
+  geom_point(alpha=0.8,
+             shape="circle",
+             aes(colour=ARM.x),
+             ) +
+  geom_smooth(aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", se=F) +
+  geom_smooth(method="lm", linetype="dashed",
+                 aes(colour=ARM.x), se=F) +
+  geom_smooth(colour="black", method="lm", linetype="dashed", se=F) +
+  labs() +
+  stat_regline_equation(
+    label.x=75,
+    label.y=-10, 
+    size=9) +   
+  stat_cor(
+    label.x=75,
+    label.y=-20, 
+    size=9) +
+  coord_cartesian(xlim=c(0,125),ylim=c(-30,80)) +
+
+  themepowerpointlegend
+regression_of_change_in_auc_17OHP_within_patients_with_dose_change_fema
+dir.create("within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses")
+ggsave(filename=paste("regression_of_change_in_auc_17OHP_within_patients_with_dose_change_fema.tif"), 
+       path="./within_patient_regression/regression_of_auc_17OHP_within_patients/increased_doses", 
+       plot = regression_of_change_in_auc_17OHP_within_patients_with_dose_change_fema, 
+       device="tiff",  
+       width=10, height=10, 
+       compression = "lzw", limitsize=F)
+```
+
+
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+auc_total_rankings_across_all_visits <- NULL
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_15")
+```
+

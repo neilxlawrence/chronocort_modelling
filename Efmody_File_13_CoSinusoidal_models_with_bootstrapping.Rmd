@@ -1,0 +1,3673 @@
+
+```{r, load packages}
+rm(list=ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_data"))
+
+load_efmody_files_function(
+  previous_file_name="file_4",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("steroid_profiles_wide_ln_values",
+                                   "steroid_profiles_wide_ln_values_Androstenedione",
+                                   "steroid_profiles_wide_ln_values_17OHP",
+                                   "spline_summary_data_both_markers",
+                                   "all_patient_spline_fits_both_markers"))
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("patient_details",
+                                   "steroid_profiles"))
+
+
+```
+
+```{r, convert time to radian}
+#create time in hours - there are 72 readins, some time is simply reading number over 3
+normative_data$Time <-
+  normative_data$reading_number / 3
+
+#Then convert time to radians
+normative_data$Time_rad <- 
+  (2 * pi * normative_data$Time) / 24  # Assuming Time is in hours, with 24 hours in a day
+
+steroid_profiles$Time_rad <- 
+  (2 * pi * steroid_profiles$time_of_test_hours_past_first_measurement) / 24  # Assuming Time is in hours, with 24 hours in a day
+
+steroid_profiles$patient <-
+  steroid_profiles$id
+
+steroid_profiles$value_nM <-
+  steroid_profiles$AVAL
+
+steroid_profiles$ln_value_nM <-
+  log(steroid_profiles$value_nM)
+
+normative_data <-
+  subset(normative_data, !is.na(value_conc))
+```
+
+```{r, extract normative data for modelling for each marker}
+#First give us a time_corrected column that corrects to 3pm start for consistency
+normative_data$Time_corrected <-
+  normative_data$Time - 6
+normative_data$Time_corrected <-
+  ifelse(normative_data$Time_corrected < 0,
+         normative_data$Time_corrected + 24,
+         normative_data$Time_corrected)
+
+#ln transform our values
+normative_data$ln_value_nM <-
+  log(normative_data$value_nM)
+
+#then extract each marker
+normative_data_androstenedione <-
+  subset(normative_data, marker=="normative_Androstenedione")
+#we pull out all healthy paritcipants with androstenedione for bootstrapping
+normative_data_androstenedione_patients <- 
+  unique(normative_data_androstenedione$patient)
+
+normative_data_17OHP <-
+  subset(normative_data, marker=="normative_17OHP")
+#we pull out all patients with androstenedione for bootstrapping
+normative_data_17OHP_patients <- 
+  unique(normative_data_17OHP$patient)
+#we pull out all healthy paritcipants with androstenedione for bootstrapping
+```
+
+```{r, separate patients on standard treatment and chronocort for each marker, and create lists of patients}
+standard_patient_data_17OHP <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" & 
+           preparation_at_visit!="Chronocort" &
+           !is.na(time_of_test_hours_past_first_measurement))
+#we pull out all the id_visits of standard treatment visits for bootstrapping
+standard_patients_id_visits <- 
+  unique(standard_patient_data_17OHP$id_visit)
+
+chronocort_patient_data_17OHP <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" & 
+           preparation_at_visit=="Chronocort" &
+           !is.na(time_of_test_hours_past_first_measurement))
+#we pull out all the id_visits of chronocort visits for bootstrapping
+chronocort_patients_id_visits <- 
+  unique(chronocort_patient_data_17OHP$id_visit)
+
+all_patient_data_17OHP <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" & 
+           !is.na(time_of_test_hours_past_first_measurement))
+
+
+standard_patient_data_androstenedione <-
+  subset(steroid_profiles, 
+         PARAM=="Androstenedione/ SI (nmol/L)" & 
+           preparation_at_visit!="Chronocort" &
+           !is.na(time_of_test_hours_past_first_measurement))
+
+chronocort_patient_data_androstenedione <-
+  subset(steroid_profiles, 
+         PARAM=="Androstenedione/ SI (nmol/L)" & 
+           preparation_at_visit=="Chronocort" &
+           !is.na(time_of_test_hours_past_first_measurement))
+
+all_patient_data_androstenedione <-
+  subset(steroid_profiles, 
+         PARAM=="Androstenedione/ SI (nmol/L)" & 
+           !is.na(time_of_test_hours_past_first_measurement))
+```
+
+```{r, create bootstrap replication lists of separate patient visits in each group}
+# Number of bootstrap replications
+n_bootstrap <- 1000
+
+normative_androstenedione_patient_bootstrap_list <-
+normative_17OHP_patient_bootstrap_list <-
+standard_patients_id_visits_bootstrap_list <-
+chronocort_patients_id_visits_bootstrap_list <-
+  vector("list", n_bootstrap)
+  
+  
+
+# Perform the bootstrap sampling
+
+set.seed(123)  # Setting a seed for reproducibility
+
+for (i in 1:n_bootstrap) {
+  normative_17OHP_patient_bootstrap_list[[i]] <- 
+    as.character(sample(normative_data_17OHP_patients, 
+           length(normative_data_17OHP_patients), 
+           replace = TRUE))
+}
+for (i in 1:n_bootstrap) {
+  normative_androstenedione_patient_bootstrap_list[[i]] <- 
+    as.character(sample(normative_data_androstenedione_patients, 
+           length(normative_data_androstenedione_patients), 
+           replace = TRUE))
+}
+for (i in 1:n_bootstrap) {
+  standard_patients_id_visits_bootstrap_list[[i]] <- 
+    as.character(sample(standard_patients_id_visits, 
+           length(standard_patients_id_visits), 
+           replace = TRUE))
+}
+for (i in 1:n_bootstrap) {
+  chronocort_patients_id_visits_bootstrap_list[[i]] <- 
+    as.character(sample(chronocort_patients_id_visits, 
+           length(chronocort_patients_id_visits), 
+           replace = TRUE))
+}
+
+#you can have a look at an example of what we have in this data frame called example:
+example <- as.data.frame(chronocort_patients_id_visits_bootstrap_list[[3]])
+```
+
+```{r, Check for missing data}
+print("These sums should be zero:")
+sum(is.na(standard_patient_data_17OHP$value_nM))
+sum(is.na(standard_patient_data_17OHP$Time_rad))
+sum(is.na(standard_patient_data_17OHP$time_of_test_hours_past_first_measurement))
+```
+
+```{r, create a dataframe into which we can fit the fixed effects}
+fixed_effects_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+fixed_effects_frame$Time_rad <- 
+  (2 * pi * fixed_effects_frame$time_of_test_hours_past_first_measurement) / 24
+```
+
+```{r, create other dataframes into which we can fit the bootstrapped fixed effects of each marker}
+#normative 17OHP
+bootstrapped_normative_17OHP_fixed_effects_fit_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+bootstrapped_normative_17OHP_fixed_effects_fit_frame$Time_rad <- 
+  (2 * pi * bootstrapped_normative_17OHP_fixed_effects_fit_frame$time_of_test_hours_past_first_measurement) / 24  
+
+#normative androstenedione
+bootstrapped_normative_androstenedione_fixed_effects_fit_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+bootstrapped_normative_androstenedione_fixed_effects_fit_frame$Time_rad <- 
+  (2 * pi * bootstrapped_normative_androstenedione_fixed_effects_fit_frame$time_of_test_hours_past_first_measurement) / 24  
+
+#standard patients 17OHP
+bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame$Time_rad <- 
+  (2 * pi * bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame$time_of_test_hours_past_first_measurement) / 24  
+
+#standard patients androstenedione
+bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame$Time_rad <- 
+  (2 * pi * bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame$time_of_test_hours_past_first_measurement) / 24  
+
+#chronocort patients 17OHP
+bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame$Time_rad <- 
+  (2 * pi * bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame$time_of_test_hours_past_first_measurement) / 24  
+
+#chronocort patients androstenedione
+bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame <-
+  data.frame(time_of_test_hours_past_first_measurement=
+    seq(from=0,
+        to=25, 
+        by=0.1)
+  )
+
+bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame$Time_rad <- 
+  (2 * pi * bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame$time_of_test_hours_past_first_measurement) / 24  
+```
+
+
+```{r, create a dataframe where we can insert our bootstrapped metrics for each marker}
+bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP <-
+  data.frame(NULL)
+bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione <-
+  data.frame(NULL)
+
+bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP <-
+  data.frame(NULL)
+bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione <-
+  data.frame(NULL)
+
+bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP <-
+  data.frame(NULL)
+bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione <-
+  data.frame(NULL)
+```
+
+
+###########################
+Normative 17OHP
+############################
+
+```{r, fit ln multilevel models on normative data}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_ln_17OHP_normative.txt")
+# Fit the Multilevel Model with cosine term
+print("Null model intercept")
+normative_17OHP_ln_model_null_intercept <- 
+  lmer(ln_value_nM ~ 
+                     Time_rad + 
+                (1 | patient), 
+              data = normative_data_17OHP)
+summary(normative_17OHP_ln_model_null_intercept)
+rsquared(normative_17OHP_ln_model_null_intercept)$Conditional
+normative_data_17OHP$normative_17OHP_ln_model_null_intercept <-
+  predict(normative_17OHP_ln_model_null_intercept)
+head(predict(normative_17OHP_ln_model_null_intercept))
+print("Null model slope")
+normative_17OHP_ln_model_null_slope <- lmer(ln_value_nM ~ 
+                           Time_rad + 
+                (Time_rad | patient), 
+              data = normative_data_17OHP)
+summary(normative_17OHP_ln_model_null_slope)
+rsquared(normative_17OHP_ln_model_null_slope)$Conditional
+normative_data_17OHP$normative_17OHP_ln_model_null_slope <-
+  predict(normative_17OHP_ln_model_null_slope)
+head(predict(normative_17OHP_ln_model_null_slope))
+print("Cos only model with intercept")
+normative_17OHP_ln_model_cos <- lmer(ln_value_nM ~ cos(Time_rad) + 
+                (1 | patient), 
+              data = normative_data_17OHP)
+summary(normative_17OHP_ln_model_cos)
+rsquared(normative_17OHP_ln_model_cos)$Conditional
+normative_data_17OHP$normative_17OHP_ln_model_cos <-
+  predict(normative_17OHP_ln_model_cos)
+print("Sin only model with random intercept")
+normative_17OHP_ln_model_sin <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                (1 | patient), 
+              data = normative_data_17OHP)
+summary(normative_17OHP_ln_model_sin)
+rsquared(normative_17OHP_ln_model_sin)$Conditional
+normative_data_17OHP$normative_17OHP_ln_model_sin <-
+  predict(normative_17OHP_ln_model_sin)
+print("Cosinor model with random intercept")
+normative_17OHP_ln_model_sin_cos <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | patient), 
+              data = normative_data_17OHP)
+summary(normative_17OHP_ln_model_sin_cos)
+rsquared(normative_17OHP_ln_model_sin_cos)$Conditional
+normative_data_17OHP$normative_17OHP_ln_model_sin_cos <-
+  predict(normative_17OHP_ln_model_sin_cos)
+print("Cosinor model with random slope")
+normative_17OHP_ln_model_sin_cos_slope <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = normative_data_17OHP)
+summary(normative_17OHP_ln_model_sin_cos_slope)
+rsquared(normative_17OHP_ln_model_sin_cos_slope)$Conditional
+normative_data_17OHP$normative_17OHP_ln_model_sin_cos_slope <-
+  predict(normative_17OHP_ln_model_sin_cos_slope)
+print("Comparisons to random random intercepts")
+anova(normative_17OHP_ln_model_null_intercept, normative_17OHP_ln_model_cos)
+anova(normative_17OHP_ln_model_null_intercept, normative_17OHP_ln_model_sin)
+anova(normative_17OHP_ln_model_null_intercept, normative_17OHP_ln_model_sin_cos)
+anova(normative_17OHP_ln_model_null_intercept, normative_17OHP_ln_model_sin_cos_slope)
+anova(normative_17OHP_ln_model_cos, normative_17OHP_ln_model_sin)
+print("Comparisons to random random slopes")
+
+anova(normative_17OHP_ln_model_null_slope, normative_17OHP_ln_model_cos)
+anova(normative_17OHP_ln_model_null_slope, normative_17OHP_ln_model_sin)
+anova(normative_17OHP_ln_model_null_slope, normative_17OHP_ln_model_sin_cos)
+anova(normative_17OHP_ln_model_null_slope, normative_17OHP_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, facet plot of cos sin models, code poached from file 28, for ln values}
+ln_sin_cosine_model_plot <- 
+  ggplot() +
+  #plot our ln readings of 17OHP
+  geom_point(data=normative_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM),
+             colour="darkgreen",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of 17OHP
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="darkgreen",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=normative_17OHP_ln_model_null_slope,
+                 group=patient),
+             colour="darkgreen",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=normative_17OHP_ln_model_sin_cos_slope,
+                 group=patient),
+             colour="darkgreen",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~patient) +
+  labs(y="ln 17OHP (ln nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope"),
+       subtitle=paste0("")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_model_plot
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_model_plots_normative_facet", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_model_plot, 
+       device="tiff",  
+       width=20, height=10, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, bootstrap ln cosinor multilevel models 17OHP on normative data}
+#this time we don't sink to a text file, we want to run through every bootstrap replication
+for (this_bootstrap_number in 1:n_bootstrap){
+  #print i if it's a multiple of 50
+  if (this_bootstrap_number %% 50 == 0) {
+    print(paste0("Replication number is : ", this_bootstrap_number))
+  }
+
+
+#create an empty frame to bind to that will be this bootstrap replication of normative_data_17OHP
+bootstrap_replication_normative_data_17OHP <-
+  data.frame(NULL)
+#we use our normative_17OHP_patient_bootstrap_list to pull create a version of normative_data_17OHP
+for (row_number in 1:length(normative_17OHP_patient_bootstrap_list[[this_bootstrap_number]])){
+  #take out the patient
+  patient_to_pull <- 
+    (normative_17OHP_patient_bootstrap_list[[this_bootstrap_number]][row_number])
+  #take out the patient data
+  patient_data_to_pull <-
+    subset(normative_data_17OHP, patient==patient_to_pull)
+  #replace the patient data patient label with the row_number that we are on
+  patient_data_to_pull$patient <- 
+    row_number
+  #then bind the new bootstrapped patient data into the frame
+  bootstrap_replication_normative_data_17OHP <-
+    rbind(
+      bootstrap_replication_normative_data_17OHP,
+      patient_data_to_pull
+    )
+}
+
+#we then use that bootstrap_replication_normative_data_17OHP and perform cosinor modelling with random intercept and random slope
+bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = bootstrap_replication_normative_data_17OHP)
+summary(bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope)
+rsquared(bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope)$Conditional
+
+#fit the predictions to the bootstrap version of the data frame
+bootstrap_replication_normative_data_17OHP$bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope <-
+  predict(bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope)
+
+#then fit predictions to the bootstrapped fixed effects frame for this replication
+bootstrapped_normative_17OHP_fixed_effects_fit_frame$fixed_effects_fit_this_replication <- 
+  predict(bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope, newdata = bootstrapped_normative_17OHP_fixed_effects_fit_frame, re.form = NA)
+
+#pull out the metrics we want from bootstrapped_normative_17OHP_fixed_effects_fit_frame$fixed_effects_fit_this_replication
+#pull out the whole row at minimum and use it to pull out time and value at trough
+minimum_row_of_fixed_effects_fit <-
+  bootstrapped_normative_17OHP_fixed_effects_fit_frame %>% 
+    slice_min(fixed_effects_fit_this_replication, n=1, with_ties = F)
+minimum_ln_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+minimum_absolute_17OHP_of_fixed_effects_fit <-
+  exp(minimum_ln_17OHP_of_fixed_effects_fit)
+time_rad_of_minimum_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+    
+#pull out the whole row at maximum and use it to pull out time and value at trough
+maximum_row_of_fixed_effects_fit <-
+  bootstrapped_normative_17OHP_fixed_effects_fit_frame %>% 
+    slice_max(fixed_effects_fit_this_replication, n=1, with_ties = F)
+maximum_ln_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+maximum_absolute_17OHP_of_fixed_effects_fit <-
+  exp(maximum_ln_17OHP_of_fixed_effects_fit)
+time_rad_of_maximum_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+
+#calculate the amplitude of the fixed effects fit in absolute terms as half of the peak to trough.
+    
+amplitude_of_ln_fixed_effects_fit <-
+  (maximum_ln_17OHP_of_fixed_effects_fit - 
+  minimum_ln_17OHP_of_fixed_effects_fit) / 2
+    
+amplitude_of_absolute_fixed_effects_fit <-
+  (maximum_absolute_17OHP_of_fixed_effects_fit - 
+  minimum_absolute_17OHP_of_fixed_effects_fit) / 2
+
+#now we have calculated everything for that fixed effects model fit, we can now put those metrics into a version of the outside frame to add to
+bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP_to_add <-
+  data.frame(
+    bootstrap_replication = this_bootstrap_number,
+    minimum_ln_17OHP_of_fixed_effects_fit = 
+      minimum_ln_17OHP_of_fixed_effects_fit,
+    minimum_absolute_17OHP_of_fixed_effects_fit =
+      minimum_absolute_17OHP_of_fixed_effects_fit,
+    time_rad_of_minimum_17OHP_of_fixed_effects_fit =
+      time_rad_of_minimum_17OHP_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit,
+    maximum_ln_17OHP_of_fixed_effects_fit = 
+      maximum_ln_17OHP_of_fixed_effects_fit,
+    maximum_absolute_17OHP_of_fixed_effects_fit =
+      maximum_absolute_17OHP_of_fixed_effects_fit,
+    time_rad_of_maximum_17OHP_of_fixed_effects_fit =
+      time_rad_of_maximum_17OHP_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit,
+    amplitude_of_ln_fixed_effects_fit =
+      amplitude_of_ln_fixed_effects_fit,
+    amplitude_of_absolute_fixed_effects_fit =
+      amplitude_of_absolute_fixed_effects_fit
+  )
+
+#we then bind that to the frame outside of the loop:
+bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP <-
+  rbind(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP,
+        bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP_to_add)
+
+#now to save the different fixed effects fits we create an appropriate name for the new column
+new_column_name <-
+  paste0("bootstrapped_normative_17OHP_ln_model_sin_cos_random_slope_fixed_effects_replication_", this_bootstrap_number)
+
+#rename the column 
+colnames(bootstrapped_normative_17OHP_fixed_effects_fit_frame)[colnames(bootstrapped_normative_17OHP_fixed_effects_fit_frame) == 
+  "fixed_effects_fit_this_replication"] <- 
+    new_column_name
+
+#we then close off the loop to move to the next bootstrap replication
+}
+
+
+#then we can report our bootstrapped parameters inside a text file:
+dir.create("Bootstrapped_cosinor_parameters")
+sink("Bootstrapped_cosinor_parameters/Bootstrapped_normative_17OHP.txt")
+cat(paste0("Number of bootstrap replications is: ", n_bootstrap))
+cat("\n********************************************************************************\n")
+cat("Healthy participants 17OHP cosinor models with random slopes and random intercepts\n")
+cat("********************************************************************************\n")
+
+cat("\nBootstrap replication mean of minimum of healthy participant ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of healthy participant ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of healthy participant ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\n\nWe then take the exponent of all of those figures to report those numbers in absolute terms:\n\n")
+
+cat("\nBootstrap replication mean of minimum of healthy participant absolute 17OHP:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of healthy participant absolute 17OHP:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of healthy participant absolute 17OHP:\n")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_absolute_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_absolute_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_absolute_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_17OHP$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+sink()
+```
+
+###########################
+Normative androstenedione
+############################
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_ln_androstenedione_normative.txt")
+# Fit the Multilevel Model with cosine term
+
+print("Null model random intercept")
+normative_androstenedione_ln_model_null_intercept <- lmer(ln_value_nM ~ 
+                     Time_rad + 
+                (1 | patient), 
+              data = normative_data_androstenedione)
+summary(normative_androstenedione_ln_model_null_intercept)
+rsquared(normative_androstenedione_ln_model_null_intercept)$Conditional
+normative_data_androstenedione$normative_androstenedione_ln_model_null_intercept <-
+  predict(normative_androstenedione_ln_model_null_intercept)
+head(predict(normative_androstenedione_ln_model_null_intercept))
+
+print("Null model random slope")
+normative_androstenedione_ln_model_null_slope <- lmer(ln_value_nM ~ 
+                           Time_rad + 
+                (Time_rad | patient), 
+              data = normative_data_androstenedione)
+summary(normative_androstenedione_ln_model_null_slope)
+rsquared(normative_androstenedione_ln_model_null_slope)$Conditional
+normative_data_androstenedione$normative_androstenedione_ln_model_null_slope <-
+  predict(normative_androstenedione_ln_model_null_slope)
+head(predict(normative_androstenedione_ln_model_null_slope))
+print("Cos only model with random intercept")
+normative_androstenedione_ln_model_cos <- lmer(ln_value_nM ~ cos(Time_rad) + 
+                (1 | patient), 
+              data = normative_data_androstenedione)
+summary(normative_androstenedione_ln_model_cos)
+rsquared(normative_androstenedione_ln_model_cos)$Conditional
+normative_data_androstenedione$normative_androstenedione_ln_model_cos <-
+  predict(normative_androstenedione_ln_model_cos)
+print("Sin only model with random intercept")
+normative_androstenedione_ln_model_sin <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                (1 | patient), 
+              data = normative_data_androstenedione)
+summary(normative_androstenedione_ln_model_sin)
+rsquared(normative_androstenedione_ln_model_sin)$Conditional
+normative_data_androstenedione$normative_androstenedione_ln_model_sin <-
+  predict(normative_androstenedione_ln_model_sin)
+print("Cosinor model with random intercept")
+normative_androstenedione_ln_model_sin_cos <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | patient), 
+              data = normative_data_androstenedione)
+summary(normative_androstenedione_ln_model_sin_cos)
+rsquared(normative_androstenedione_ln_model_sin_cos)$Conditional
+normative_data_androstenedione$normative_androstenedione_ln_model_sin_cos <-
+  predict(normative_androstenedione_ln_model_sin_cos)
+print("Cosinor model with random slope")
+normative_androstenedione_ln_model_sin_cos_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = normative_data_androstenedione)
+summary(normative_androstenedione_ln_model_sin_cos_slope)
+rsquared(normative_androstenedione_ln_model_sin_cos_slope)$Conditional
+normative_data_androstenedione$normative_androstenedione_ln_model_sin_cos_slope <-
+  predict(normative_androstenedione_ln_model_sin_cos_slope)
+print("Comparisons to random random intercepts")
+anova(normative_androstenedione_ln_model_null_intercept, normative_androstenedione_ln_model_cos)
+anova(normative_androstenedione_ln_model_null_intercept, normative_androstenedione_ln_model_sin)
+anova(normative_androstenedione_ln_model_null_intercept, normative_androstenedione_ln_model_sin_cos)
+anova(normative_androstenedione_ln_model_null_intercept, normative_androstenedione_ln_model_sin_cos_slope)
+anova(normative_androstenedione_ln_model_cos, normative_androstenedione_ln_model_sin)
+print("Comparisons to random random slopes")
+anova(normative_androstenedione_ln_model_null_slope, normative_androstenedione_ln_model_cos)
+anova(normative_androstenedione_ln_model_null_slope, normative_androstenedione_ln_model_sin)
+anova(normative_androstenedione_ln_model_null_slope, normative_androstenedione_ln_model_sin_cos)
+anova(normative_androstenedione_ln_model_null_slope, normative_androstenedione_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, facet plot of cos sin models for ln values}
+ln_sin_cosine_model_plot <- 
+  ggplot() +
+  #plot our ln readings of androstenedione
+  geom_point(data=normative_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM),
+             colour="darkgreen",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of androstenedione
+  geom_line(data=normative_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="darkgreen",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=normative_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=normative_androstenedione_ln_model_null_slope,
+                 group=patient),
+             colour="darkgreen",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=normative_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=normative_androstenedione_ln_model_sin_cos_slope,
+                 group=patient),
+             colour="darkgreen",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~patient) +
+  labs(y="ln androstenedione (ln nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope"),
+       subtitle=paste0("")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_model_plot
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_model_plots_normative_facet", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_model_plot, 
+       device="tiff",  
+       width=20, height=10, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, bootstrap ln cosinor multilevel models androstenedione on normative data}
+#this time we don't sink to a text file, we want to run through every bootstrap replication
+for (this_bootstrap_number in 1:n_bootstrap){
+  #print i if it's a multiple of 50
+  if (this_bootstrap_number %% 50 == 0) {
+    print(paste0("Replication number is : ", this_bootstrap_number))
+  }
+
+
+#create an empty frame to bind to that will be this bootstrap replication of normative_data_androstenedione
+bootstrap_replication_normative_data_androstenedione <-
+  data.frame(NULL)
+#we use our normative_androstenedione_patient_bootstrap_list to pull create a version of normative_data_androstenedione
+for (row_number in 1:length(normative_androstenedione_patient_bootstrap_list[[this_bootstrap_number]])){
+  #take out the patient
+  patient_to_pull <- 
+    (normative_androstenedione_patient_bootstrap_list[[this_bootstrap_number]][row_number])
+  #take out the patient data
+  patient_data_to_pull <-
+    subset(normative_data_androstenedione, patient==patient_to_pull)
+  #replace the patient data patient label with the row_number that we are on
+  patient_data_to_pull$patient <- 
+    row_number
+  #then bind the new bootstrapped patient data into the frame
+  bootstrap_replication_normative_data_androstenedione <-
+    rbind(
+      bootstrap_replication_normative_data_androstenedione,
+      patient_data_to_pull
+    )
+}
+
+#we then use that bootstrap_replication_normative_data_androstenedione and perform cosinor modelling with random intercept and random slope
+bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = bootstrap_replication_normative_data_androstenedione)
+summary(bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope)
+rsquared(bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope)$Conditional
+
+#fit the predictions to the bootstrap version of the data frame
+bootstrap_replication_normative_data_androstenedione$bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope <-
+  predict(bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope)
+
+#then fit predictions to the bootstrapped fixed effects frame for this replication
+bootstrapped_normative_androstenedione_fixed_effects_fit_frame$fixed_effects_fit_this_replication <- 
+  predict(bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope, newdata = bootstrapped_normative_androstenedione_fixed_effects_fit_frame, re.form = NA)
+
+#pull out the metrics we want from bootstrapped_normative_androstenedione_fixed_effects_fit_frame$fixed_effects_fit_this_replication
+#pull out the whole row at minimum and use it to pull out time and value at trough
+minimum_row_of_fixed_effects_fit <-
+  bootstrapped_normative_androstenedione_fixed_effects_fit_frame %>% 
+    slice_min(fixed_effects_fit_this_replication, n=1, with_ties = F)
+minimum_ln_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+minimum_absolute_androstenedione_of_fixed_effects_fit <-
+  exp(minimum_ln_androstenedione_of_fixed_effects_fit)
+time_rad_of_minimum_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+    
+#pull out the whole row at maximum and use it to pull out time and value at trough
+maximum_row_of_fixed_effects_fit <-
+  bootstrapped_normative_androstenedione_fixed_effects_fit_frame %>% 
+    slice_max(fixed_effects_fit_this_replication, n=1, with_ties = F)
+maximum_ln_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+maximum_absolute_androstenedione_of_fixed_effects_fit <-
+  exp(maximum_ln_androstenedione_of_fixed_effects_fit)
+time_rad_of_maximum_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+
+#calculate the amplitude of the fixed effects fit in absolute terms as half of the peak to trough. Technically this is slightly bastardised as the model is fit to the ln values meaning when we use the exponents, the distance from trough to mesor is less than the value of mesor to peak, but for the sake of comparison purposes it is the most sensible number to estimate and to quote
+    
+amplitude_of_ln_fixed_effects_fit <-
+  (maximum_ln_androstenedione_of_fixed_effects_fit - 
+  minimum_ln_androstenedione_of_fixed_effects_fit) / 2
+    
+amplitude_of_absolute_fixed_effects_fit <-
+  (maximum_absolute_androstenedione_of_fixed_effects_fit - 
+  minimum_absolute_androstenedione_of_fixed_effects_fit) / 2
+
+#now we have calculated everything for that fixed effects model fit, we can now put those metrics into a version of the outside frame to add to
+bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione_to_add <-
+  data.frame(
+    bootstrap_replication = this_bootstrap_number,
+    minimum_ln_androstenedione_of_fixed_effects_fit = 
+      minimum_ln_androstenedione_of_fixed_effects_fit,
+    minimum_absolute_androstenedione_of_fixed_effects_fit =
+      minimum_absolute_androstenedione_of_fixed_effects_fit,
+    time_rad_of_minimum_androstenedione_of_fixed_effects_fit =
+      time_rad_of_minimum_androstenedione_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit,
+    maximum_ln_androstenedione_of_fixed_effects_fit = 
+      maximum_ln_androstenedione_of_fixed_effects_fit,
+    maximum_absolute_androstenedione_of_fixed_effects_fit =
+      maximum_absolute_androstenedione_of_fixed_effects_fit,
+    time_rad_of_maximum_androstenedione_of_fixed_effects_fit =
+      time_rad_of_maximum_androstenedione_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit,
+    amplitude_of_ln_fixed_effects_fit =
+      amplitude_of_ln_fixed_effects_fit,
+    amplitude_of_absolute_fixed_effects_fit =
+      amplitude_of_absolute_fixed_effects_fit
+  )
+
+#we then bind that to the frame outside of the loop:
+bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione <-
+  rbind(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione,
+        bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione_to_add)
+
+#now to save the different fixed effects fits we create an appropriate name for the new column
+new_column_name <-
+  paste0("bootstrapped_normative_androstenedione_ln_model_sin_cos_random_slope_fixed_effects_replication_", this_bootstrap_number)
+
+#rename the column 
+colnames(bootstrapped_normative_androstenedione_fixed_effects_fit_frame)[colnames(bootstrapped_normative_androstenedione_fixed_effects_fit_frame) == 
+  "fixed_effects_fit_this_replication"] <- 
+    new_column_name
+
+#we then close off the loop to move to the next bootstrap replication
+}
+
+
+#then we can report our bootstrapped parameters inside a text file:
+dir.create("Bootstrapped_cosinor_parameters")
+sink("Bootstrapped_cosinor_parameters/Bootstrapped_normative_androstenedione.txt")
+cat(paste0("Number of bootstrap replications is: ", n_bootstrap))
+cat("********************************************************************************\n")
+cat("Healthy participants androstenedione cosinor models with random slopes and random intercepts\n")
+cat("********************************************************************************\n")
+
+cat("\nBootstrap replication mean of minimum of healthy participant ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of healthy participant ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of healthy participant ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\n\nWe then take the exponent of all of those figures to report those numbers in absolute terms:\n\n")
+
+cat("\nBootstrap replication mean of minimum of healthy participant absolute androstenedione:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of healthy participant absolute androstenedione:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of healthy participant absolute androstenedione:\n")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_absolute_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_absolute_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_absolute_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_healthy_androstenedione$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+
+sink()
+```
+
+
+###########################
+Standard Glucocorticoid Replacement Patients 17OHP
+############################
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_absolute_17OHP_cah_patient_standard_treatment.txt")
+# Fit the Multilevel Model with cosine term
+print("Null model random intercept")
+standard_patient_17OHP_absolute_model_null <- lmer(value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_absolute_model_null)
+rsquared(standard_patient_17OHP_absolute_model_null)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_absolute_model_null <-
+  predict(standard_patient_17OHP_absolute_model_null)
+print("Null model random slope")
+standard_patient_17OHP_absolute_model_null_slope <- lmer(value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_absolute_model_null_slope)
+rsquared(standard_patient_17OHP_absolute_model_null_slope)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_absolute_model_null_slope <-
+  predict(standard_patient_17OHP_absolute_model_null_slope)
+print("Cos only model with random intercept")
+standard_patient_17OHP_absolute_model_cos <- lmer(value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_absolute_model_cos)
+rsquared(standard_patient_17OHP_absolute_model_cos)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_absolute_model_cos <-
+  predict(standard_patient_17OHP_absolute_model_cos)
+print("Sin only model with random intercept")
+standard_patient_17OHP_absolute_model_sin <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_absolute_model_sin)
+rsquared(standard_patient_17OHP_absolute_model_sin)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_absolute_model_sin <-
+  predict(standard_patient_17OHP_absolute_model_sin)
+print("Cosinor model with random intercept")
+standard_patient_17OHP_absolute_model_sin_cos <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_absolute_model_sin_cos)
+rsquared(standard_patient_17OHP_absolute_model_sin_cos)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_absolute_model_sin_cos <-
+  predict(standard_patient_17OHP_absolute_model_sin_cos)
+
+print("Cosinor model with random slope")
+standard_patient_17OHP_absolute_model_sin_cos_slope <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_absolute_model_sin_cos_slope)
+rsquared(standard_patient_17OHP_absolute_model_sin_cos_slope)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_absolute_model_sin_cos_slope <-
+  predict(standard_patient_17OHP_absolute_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+anova(standard_patient_17OHP_absolute_model_null, standard_patient_17OHP_absolute_model_cos)
+anova(standard_patient_17OHP_absolute_model_null, standard_patient_17OHP_absolute_model_sin)
+anova(standard_patient_17OHP_absolute_model_null, standard_patient_17OHP_absolute_model_sin_cos)
+anova(standard_patient_17OHP_absolute_model_null, standard_patient_17OHP_absolute_model_sin_cos_slope)
+anova(standard_patient_17OHP_absolute_model_cos, standard_patient_17OHP_absolute_model_sin)
+print("Comparisons to random random slopes")
+anova(standard_patient_17OHP_absolute_model_null_slope, standard_patient_17OHP_absolute_model_cos)
+anova(standard_patient_17OHP_absolute_model_null_slope, standard_patient_17OHP_absolute_model_sin)
+anova(standard_patient_17OHP_absolute_model_null_slope, standard_patient_17OHP_absolute_model_sin_cos)
+anova(standard_patient_17OHP_absolute_model_null_slope, standard_patient_17OHP_absolute_model_sin_cos_slope)
+sink()
+```
+
+```{r, facet plot of cos sin models for ln values}
+
+sin_cosine_standard_patient_17OHP_absolute_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of 17OHP
+  geom_point(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of 17OHP
+  geom_line(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=value_nM,
+                 group=patient),
+             colour="blue",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=standard_patient_17OHP_absolute_model_null_slope,
+                 group=patient),
+             colour="blue",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=standard_patient_17OHP_absolute_model_sin_cos_slope,
+                 group=patient),
+             colour="darkblue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  #plot our actual readings of Androstenedione
+#  geom_point(data=giant_normative_spline_curve_frame_Androstenedione_specific_df, 
+#             aes(x=reading_number, 
+#                 y=non_negative_y_Androstenedione),
+#             colour="red",
+#             alpha=0.1,
+#             shape="circle",
+#             size=0.01) +
+  labs(y="Scaled markers",
+       x="Reading number",
+       title=paste0("Scaled Spline Curves All patients Overlaid with Degrees of Freedom"),
+       subtitle=paste0("Column = visit, Row = Arm. Red = Androstenedione, Blue = 17OHP")
+       ) +
+  themepowerpointtitle
+sin_cosine_standard_patient_17OHP_absolute_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("sin_cosine_standard_patient_17OHP_absolute_model_plot_patients_17OHP_facet", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = sin_cosine_standard_patient_17OHP_absolute_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_ln_17OHP_cah_patient_standard_treatment.txt")
+print("Null model random intercept")
+# Fit the Multilevel Model with cosine term
+standard_patient_17OHP_ln_model_null_intercept <- lmer(ln_value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_ln_model_null_intercept)
+rsquared(standard_patient_17OHP_ln_model_null_intercept)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_ln_model_null_intercept <-
+  predict(standard_patient_17OHP_ln_model_null_intercept)
+
+print("Null model random slope")
+standard_patient_17OHP_ln_model_null_slope <- lmer(ln_value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_ln_model_null_slope)
+rsquared(standard_patient_17OHP_ln_model_null_slope)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_ln_model_null_slope <-
+  predict(standard_patient_17OHP_ln_model_null_slope)
+
+print("Cos only model with random intercept")
+standard_patient_17OHP_ln_model_cos <- lmer(ln_value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_ln_model_cos)
+rsquared(standard_patient_17OHP_ln_model_cos)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_ln_model_cos <-
+  predict(standard_patient_17OHP_ln_model_cos)
+
+print("Sin only model with random intercept")
+standard_patient_17OHP_ln_model_sin <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_ln_model_sin)
+rsquared(standard_patient_17OHP_ln_model_sin)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_ln_model_sin <-
+  predict(standard_patient_17OHP_ln_model_sin)
+
+print("Cosinor model with random intercept")
+standard_patient_17OHP_ln_model_sin_cos <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_ln_model_sin_cos)
+rsquared(standard_patient_17OHP_ln_model_sin_cos)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_ln_model_sin_cos <-
+  predict(standard_patient_17OHP_ln_model_sin_cos)
+
+print("Cosinor model with random slope")
+standard_patient_17OHP_ln_model_sin_cos_slope <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_17OHP)
+summary(standard_patient_17OHP_ln_model_sin_cos_slope)
+rsquared(standard_patient_17OHP_ln_model_sin_cos_slope)$Conditional
+standard_patient_data_17OHP$standard_patient_17OHP_ln_model_sin_cos_slope <-
+  predict(standard_patient_17OHP_ln_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+anova(standard_patient_17OHP_ln_model_null_intercept, standard_patient_17OHP_ln_model_cos)
+anova(standard_patient_17OHP_ln_model_null_intercept, standard_patient_17OHP_ln_model_sin)
+anova(standard_patient_17OHP_ln_model_null_intercept, standard_patient_17OHP_ln_model_sin_cos)
+anova(standard_patient_17OHP_ln_model_null_intercept, standard_patient_17OHP_ln_model_sin_cos_slope)
+anova(standard_patient_17OHP_ln_model_cos, standard_patient_17OHP_ln_model_sin)
+
+print("Comparisons to random random slopes")
+anova(standard_patient_17OHP_ln_model_null_slope, standard_patient_17OHP_ln_model_cos)
+anova(standard_patient_17OHP_ln_model_null_slope, standard_patient_17OHP_ln_model_sin)
+anova(standard_patient_17OHP_ln_model_null_slope, standard_patient_17OHP_ln_model_sin_cos)
+anova(standard_patient_17OHP_ln_model_null_slope, standard_patient_17OHP_ln_model_sin_cos_slope)
+
+sink()
+```
+
+```{r, facet plot of cos sin models for ln values}
+ln_sin_cosine_standard_patient_17OHP_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of 17OHP
+  geom_point(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of 17OHP
+  geom_line(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="blue",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=standard_patient_17OHP_ln_model_null_slope,
+                 group=patient),
+             colour="blue",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=standard_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=standard_patient_17OHP_ln_model_sin_cos_slope,
+                 group=patient),
+             colour="darkblue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  #plot our actual readings of Androstenedione
+#  geom_point(data=giant_normative_spline_curve_frame_Androstenedione_specific_df, 
+#             aes(x=reading_number, 
+#                 y=ln_non_negative_y_Androstenedione),
+#             colour="red",
+#             alpha=0.1,
+#             shape="circle",
+#             size=0.01) +
+  labs(y="Scaled markers",
+       x="Reading number",
+       title=paste0("Scaled Spline Curves All patients Overlaid with Degrees of Freedom"),
+       subtitle=paste0("Column = visit, Row = Arm. Red = Androstenedione, Blue = 17OHP")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_standard_patient_17OHP_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_standard_patient_17OHP_model_plot_patients_17OHP_facet", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_standard_patient_17OHP_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, bootstrap ln cosinor multilevel models 17OHP on standard patient data}
+#this time we don't sink to a text file, we want to run through every bootstrap replication
+for (this_bootstrap_number in 1:n_bootstrap){
+  #print i if it's a multiple of 50
+  if (this_bootstrap_number %% 50 == 0) {
+    print(paste0("Replication number is : ", this_bootstrap_number))
+  }
+
+
+#create an empty frame to bind to that will be this bootstrap replication of standard_id_visit_data_17OHP
+bootstrap_replication_standard_id_visit_data_17OHP <-
+  data.frame(NULL)
+#we use our standard_patients_id_visits_bootstrap_list to pull create a version of standard_id_visit_data_17OHP
+for (row_number in 1:length(standard_patients_id_visits_bootstrap_list[[this_bootstrap_number]])){
+  #take out the patient
+  id_visit_to_pull <- 
+    (standard_patients_id_visits_bootstrap_list[[this_bootstrap_number]][row_number])
+  #take out the patient data
+  id_visit_data_to_pull <-
+    subset(standard_patient_data_17OHP, id_visit==id_visit_to_pull)
+  #replace the patient data id_visit label with the row_number that we are on
+  id_visit_data_to_pull$id_visit <- 
+    row_number
+  #then bind the new bootstrapped patient data into the frame
+  bootstrap_replication_standard_id_visit_data_17OHP <-
+    rbind(
+      bootstrap_replication_standard_id_visit_data_17OHP,
+      id_visit_data_to_pull
+    )
+}
+
+#we then use that bootstrap_replication_standard_id_visit_data_17OHP and perform cosinor modelling with random intercept and random slope
+bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = bootstrap_replication_standard_id_visit_data_17OHP)
+summary(bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope)
+rsquared(bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope)$Conditional
+
+#fit the predictions to the bootstrap version of the data frame
+bootstrap_replication_standard_id_visit_data_17OHP$bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope <-
+  predict(bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope)
+
+#then fit predictions to the bootstrapped fixed effects frame for this replication
+bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame$fixed_effects_fit_this_replication <- 
+  predict(bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope, 
+          newdata = bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame, re.form = NA)
+
+#pull out the metrics we want from bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame$fixed_effects_fit_this_replication
+#pull out the whole row at minimum and use it to pull out time and value at trough
+minimum_row_of_fixed_effects_fit <-
+  bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame %>% 
+    slice_min(fixed_effects_fit_this_replication, n=1, with_ties = F)
+minimum_ln_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+minimum_absolute_17OHP_of_fixed_effects_fit <-
+  exp(minimum_ln_17OHP_of_fixed_effects_fit)
+time_rad_of_minimum_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+    
+#pull out the whole row at maximum and use it to pull out time and value at trough
+maximum_row_of_fixed_effects_fit <-
+  bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame %>% 
+    slice_max(fixed_effects_fit_this_replication, n=1, with_ties = F)
+maximum_ln_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+maximum_absolute_17OHP_of_fixed_effects_fit <-
+  exp(maximum_ln_17OHP_of_fixed_effects_fit)
+time_rad_of_maximum_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+
+#calculate the amplitude of the fixed effects fit in absolute terms as half of the peak to trough.
+    
+amplitude_of_ln_fixed_effects_fit <-
+  (maximum_ln_17OHP_of_fixed_effects_fit - 
+  minimum_ln_17OHP_of_fixed_effects_fit) / 2
+    
+amplitude_of_absolute_fixed_effects_fit <-
+  (maximum_absolute_17OHP_of_fixed_effects_fit - 
+  minimum_absolute_17OHP_of_fixed_effects_fit) / 2
+
+#now we have calculated everything for that fixed effects model fit, we can now put those metrics into a version of the outside frame to add to
+bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP_to_add <-
+  data.frame(
+    bootstrap_replication = this_bootstrap_number,
+    minimum_ln_17OHP_of_fixed_effects_fit = 
+      minimum_ln_17OHP_of_fixed_effects_fit,
+    minimum_absolute_17OHP_of_fixed_effects_fit =
+      minimum_absolute_17OHP_of_fixed_effects_fit,
+    time_rad_of_minimum_17OHP_of_fixed_effects_fit =
+      time_rad_of_minimum_17OHP_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit,
+    maximum_ln_17OHP_of_fixed_effects_fit = 
+      maximum_ln_17OHP_of_fixed_effects_fit,
+    maximum_absolute_17OHP_of_fixed_effects_fit =
+      maximum_absolute_17OHP_of_fixed_effects_fit,
+    time_rad_of_maximum_17OHP_of_fixed_effects_fit =
+      time_rad_of_maximum_17OHP_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit,
+    amplitude_of_ln_fixed_effects_fit =
+      amplitude_of_ln_fixed_effects_fit,
+    amplitude_of_absolute_fixed_effects_fit =
+      amplitude_of_absolute_fixed_effects_fit
+  )
+
+#we then bind that to the frame outside of the loop:
+bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP <-
+  rbind(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP,
+        bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP_to_add)
+
+#now to save the different fixed effects fits we create an appropriate name for the new column
+new_column_name <-
+  paste0("bootstrapped_standard_patient_17OHP_ln_model_sin_cos_random_slope_fixed_effects_replication_", this_bootstrap_number)
+
+#rename the column 
+colnames(bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame)[colnames(bootstrapped_standard_patients_17OHP_fixed_effects_fit_frame) == 
+  "fixed_effects_fit_this_replication"] <- 
+    new_column_name
+
+#we then close off the loop to move to the next bootstrap replication
+}
+
+
+#then we can report our bootstrapped parameters inside a text file:
+dir.create("Bootstrapped_cosinor_parameters")
+sink("Bootstrapped_cosinor_parameters/Bootstrapped_standard_patients_17OHP.txt")
+cat(paste0("Number of bootstrap replications is: ", n_bootstrap))
+cat("********************************************************************************\n")
+cat("patients on standard glucocorticoid replacements 17OHP cosinor models with random slopes and random intercepts\n")
+cat("********************************************************************************\n")
+
+cat("\nBootstrap replication mean of minimum of patients on standard glucocorticoid replacement ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on standard glucocorticoid replacement ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on standard glucocorticoid replacement ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\n\nWe then take the exponent of all of those figures to report those numbers in absolute terms:\n\n")
+
+cat("\nBootstrap replication mean of minimum of patients on standard glucocorticoid replacement absolute 17OHP:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on standard glucocorticoid replacement absolute 17OHP:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on standard glucocorticoid replacement absolute 17OHP:\n")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_absolute_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_absolute_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_absolute_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_17OHP$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+
+sink()
+```
+
+
+###########################
+Standard Glucocorticoid ReplacementPatients androstenedione
+############################
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_absolute_androstenedione_cah_patient_standard_treatment.txt")
+# Fit the Multilevel Model with cosine term
+print("Null model random intercept")
+standard_patient_androstenedione_absolute_model_null <- lmer(value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_absolute_model_null)
+rsquared(standard_patient_androstenedione_absolute_model_null)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_absolute_model_null <-
+  predict(standard_patient_androstenedione_absolute_model_null)
+
+print("Null model random slope")
+standard_patient_androstenedione_absolute_model_null_slope <- lmer(value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_absolute_model_null_slope)
+rsquared(standard_patient_androstenedione_absolute_model_null_slope)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_absolute_model_null_slope <-
+  predict(standard_patient_androstenedione_absolute_model_null_slope)
+
+print("Cos only model with random intercept")
+standard_patient_androstenedione_absolute_model_cos <- lmer(value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_absolute_model_cos)
+rsquared(standard_patient_androstenedione_absolute_model_cos)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_absolute_model_cos <-
+  predict(standard_patient_androstenedione_absolute_model_cos)
+
+print("Sin only model with random intercept")
+standard_patient_androstenedione_absolute_model_sin <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_absolute_model_sin)
+rsquared(standard_patient_androstenedione_absolute_model_sin)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_absolute_model_sin <-
+  predict(standard_patient_androstenedione_absolute_model_sin)
+
+print("Cosinor model with random intercept")
+standard_patient_androstenedione_absolute_model_sin_cos <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_absolute_model_sin_cos)
+rsquared(standard_patient_androstenedione_absolute_model_sin_cos)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_absolute_model_sin_cos <-
+  predict(standard_patient_androstenedione_absolute_model_sin_cos)
+
+print("Cosinor model with random slope")
+standard_patient_androstenedione_absolute_model_sin_cos_slope <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_absolute_model_sin_cos_slope)
+rsquared(standard_patient_androstenedione_absolute_model_sin_cos_slope)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_absolute_model_sin_cos_slope <-
+  predict(standard_patient_androstenedione_absolute_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+anova(standard_patient_androstenedione_absolute_model_null, standard_patient_androstenedione_absolute_model_cos)
+anova(standard_patient_androstenedione_absolute_model_null, standard_patient_androstenedione_absolute_model_sin)
+anova(standard_patient_androstenedione_absolute_model_null, standard_patient_androstenedione_absolute_model_sin_cos)
+anova(standard_patient_androstenedione_absolute_model_null, standard_patient_androstenedione_absolute_model_sin_cos_slope)
+anova(standard_patient_androstenedione_absolute_model_cos, standard_patient_androstenedione_absolute_model_sin)
+
+print("Comparisons to random random slopes")
+anova(standard_patient_androstenedione_absolute_model_null_slope, standard_patient_androstenedione_absolute_model_cos)
+anova(standard_patient_androstenedione_absolute_model_null_slope, standard_patient_androstenedione_absolute_model_sin)
+anova(standard_patient_androstenedione_absolute_model_null_slope, standard_patient_androstenedione_absolute_model_sin_cos)
+anova(standard_patient_androstenedione_absolute_model_null_slope, standard_patient_androstenedione_absolute_model_sin_cos_slope)
+sink()
+```
+
+```{r, facet plot of cos sin models, code poached from file 28, for ln values}
+
+sin_cosine_standard_patient_androstenedione_absolute_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of androstenedione
+  geom_point(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=value_nM),
+             colour="darkorange",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of androstenedione
+  geom_line(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=value_nM,
+                 group=patient),
+             colour="darkorange",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=standard_patient_androstenedione_absolute_model_null_slope,
+                 group=patient),
+             colour="darkorange",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=standard_patient_androstenedione_absolute_model_sin_cos_slope,
+                 group=patient),
+             colour="orange",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  labs(y="Scaled markers",
+       x="Reading number",
+       title=paste0("Scaled Spline Curves All patients Overlaid with Degrees of Freedom"),
+       subtitle=paste0("Column = visit, Row = Arm. Red = Androstenedione, Blue = androstenedione")
+       ) +
+  themepowerpointtitle
+sin_cosine_standard_patient_androstenedione_absolute_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("sin_cosine_standard_patient_androstenedione_absolute_model_plot_patients_androstenedione_facet", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = sin_cosine_standard_patient_androstenedione_absolute_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_ln_androstenedione_cah_patient_standard_treatment.txt")
+# Fit the Multilevel Model with cosine term
+print("Null model random intercept")
+standard_patient_androstenedione_ln_model_null_intercept <- lmer(ln_value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_ln_model_null_intercept)
+rsquared(standard_patient_androstenedione_ln_model_null_intercept)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_ln_model_null_intercept <-
+  predict(standard_patient_androstenedione_ln_model_null_intercept)
+
+print("Null model random slope")
+standard_patient_androstenedione_ln_model_null_slope <- lmer(ln_value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_ln_model_null_slope)
+rsquared(standard_patient_androstenedione_ln_model_null_slope)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_ln_model_null_slope <-
+  predict(standard_patient_androstenedione_ln_model_null_slope)
+
+print("Cos only model with random intercept")
+standard_patient_androstenedione_ln_model_cos <- lmer(ln_value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_ln_model_cos)
+rsquared(standard_patient_androstenedione_ln_model_cos)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_ln_model_cos <-
+  predict(standard_patient_androstenedione_ln_model_cos)
+
+print("Sin only model with random intercept")
+standard_patient_androstenedione_ln_model_sin <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_ln_model_sin)
+rsquared(standard_patient_androstenedione_ln_model_sin)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_ln_model_sin <-
+  predict(standard_patient_androstenedione_ln_model_sin)
+
+print("Cosinor model with random intercept")
+
+standard_patient_androstenedione_ln_model_sin_cos <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_ln_model_sin_cos)
+rsquared(standard_patient_androstenedione_ln_model_sin_cos)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_ln_model_sin_cos <-
+  predict(standard_patient_androstenedione_ln_model_sin_cos)
+
+print("Cosinor model with random slope")
+standard_patient_androstenedione_ln_model_sin_cos_slope <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = standard_patient_data_androstenedione)
+summary(standard_patient_androstenedione_ln_model_sin_cos_slope)
+rsquared(standard_patient_androstenedione_ln_model_sin_cos_slope)$Conditional
+standard_patient_data_androstenedione$standard_patient_androstenedione_ln_model_sin_cos_slope <-
+  predict(standard_patient_androstenedione_ln_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+anova(standard_patient_androstenedione_ln_model_null_intercept, standard_patient_androstenedione_ln_model_cos)
+anova(standard_patient_androstenedione_ln_model_null_intercept, standard_patient_androstenedione_ln_model_sin)
+anova(standard_patient_androstenedione_ln_model_null_intercept, standard_patient_androstenedione_ln_model_sin_cos)
+anova(standard_patient_androstenedione_ln_model_null_intercept, standard_patient_androstenedione_ln_model_sin_cos_slope)
+anova(standard_patient_androstenedione_ln_model_cos, standard_patient_androstenedione_ln_model_sin)
+print("Comparisons to random random slopes")
+anova(standard_patient_androstenedione_ln_model_null_slope, standard_patient_androstenedione_ln_model_cos)
+anova(standard_patient_androstenedione_ln_model_null_slope, standard_patient_androstenedione_ln_model_sin)
+anova(standard_patient_androstenedione_ln_model_null_slope, standard_patient_androstenedione_ln_model_sin_cos)
+anova(standard_patient_androstenedione_ln_model_null_slope, standard_patient_androstenedione_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, facet plot of cos sin models, code poached from file 28, for ln values androstenedione}
+ln_sin_cosine_standard_patient_androstenedione_absolute_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of androstenedione
+  geom_point(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM),
+             colour="darkorange",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of androstenedione
+  geom_line(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="darkorange",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=standard_patient_androstenedione_ln_model_null_slope,
+                 group=patient),
+             colour="darkorange",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=standard_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=standard_patient_androstenedione_ln_model_sin_cos_slope,
+                 group=patient),
+             colour="orange",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  labs(y="ln Androstenedione (ln nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope df"),
+       subtitle=paste0("")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_standard_patient_androstenedione_absolute_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_standard_patient_androstenedione_absolute_model_plot_patients_androstenedione_facet", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_standard_patient_androstenedione_absolute_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, fit our models to our fixed effects frame for average fixed effect fit}
+
+fixed_effects_frame$normative_17OHP_ln_model_null_slope <- 
+  predict(normative_17OHP_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$normative_17OHP_ln_model_sin_cos_slope <- 
+  predict(normative_17OHP_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+fixed_effects_frame$normative_17OHP_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$normative_17OHP_ln_model_sin_cos_slope)
+
+fixed_effects_frame$normative_androstenedione_ln_model_null_slope <- 
+  predict(normative_androstenedione_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$normative_androstenedione_ln_model_sin_cos_slope <- 
+  predict(normative_androstenedione_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+fixed_effects_frame$normative_androstenedione_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$normative_androstenedione_ln_model_sin_cos_slope)
+
+lme4::ranef(normative_17OHP_ln_model_null_intercept)
+lme4::ranef(normative_17OHP_ln_model_null_slope)
+lme4::fixef(normative_17OHP_ln_model_null_intercept)
+lme4::fixef(normative_17OHP_ln_model_null_slope)
+anova(normative_17OHP_ln_model_null_slope, normative_17OHP_ln_model_null_intercept)
+
+
+
+#Now that frame means we have readings from 9am in normative data. We need to convert those to 3pm
+fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected <-
+  fixed_effects_frame$time_of_test_hours_past_first_measurement - 6
+fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected <-
+  ifelse(fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected <0,
+         fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected + 24,
+         fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected)
+
+
+
+#take out our maximum normative 17OHP ln
+fixed_effects_frame_max_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(normative_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_normative_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+#take out our minimum normative 17OHP ln
+fixed_effects_frame_min_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(normative_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_normative_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+#take out our maximum androstenedione ln
+fixed_effects_frame_max_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(normative_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_normative_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+#take out our minimum androstenedione ln
+fixed_effects_frame_min_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(normative_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_normative_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+
+
+
+```
+
+```{r, add our fixed effects for patient 17OHP to our already created dataframe}
+fixed_effects_frame$standard_patient_17OHP_ln_model_null_slope <- 
+  predict(standard_patient_17OHP_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$standard_patient_17OHP_ln_model_sin_cos_slope <- 
+  predict(standard_patient_17OHP_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$standard_patient_17OHP_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$standard_patient_17OHP_ln_model_sin_cos_slope)
+
+fixed_effects_frame$standard_patient_17OHP_absolute_model_null_slope <- 
+  predict(standard_patient_17OHP_absolute_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$standard_patient_17OHP_absolute_model_sin_cos_slope <- 
+  predict(standard_patient_17OHP_absolute_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+#take out our maximum ln
+fixed_effects_frame_max_standard_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(standard_patient_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_standard_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_standard_patient_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum ln
+fixed_effects_frame_min_standard_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(standard_patient_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_standard_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_standard_patient_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our maximum absolute
+fixed_effects_frame_max_standard_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(standard_patient_17OHP_absolute_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_standard_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame_max_standard_patient_17OHP_absolute_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum absolute
+fixed_effects_frame_min_standard_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(standard_patient_17OHP_absolute_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_standard_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame_min_standard_patient_17OHP_absolute_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+
+```
+
+```{r, add our fixed effects for patient androstenedione to our already created dataframe}
+fixed_effects_frame$standard_patient_androstenedione_ln_model_null_slope <- 
+  predict(standard_patient_androstenedione_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$standard_patient_androstenedione_ln_model_sin_cos_slope <- 
+  predict(standard_patient_androstenedione_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$standard_patient_androstenedione_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$standard_patient_androstenedione_ln_model_sin_cos_slope)
+
+fixed_effects_frame$standard_patient_androstenedione_absolute_model_null_slope <- 
+  predict(standard_patient_androstenedione_absolute_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$standard_patient_androstenedione_absolute_model_sin_cos_slope <- 
+  predict(standard_patient_androstenedione_absolute_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+
+#take out our maximum ln
+fixed_effects_frame_max_standard_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(standard_patient_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_standard_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_standard_patient_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum ln
+fixed_effects_frame_min_standard_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(standard_patient_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_standard_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_standard_patient_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our maximum absolute
+fixed_effects_frame_max_standard_patient_androstenedione_absolute_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(standard_patient_androstenedione_absolute_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_standard_patient_androstenedione_absolute_model_sin_cos_slope <-
+  fixed_effects_frame_max_standard_patient_androstenedione_absolute_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum absolute
+fixed_effects_frame_min_standard_patient_androstenedione_absolute_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(standard_patient_androstenedione_absolute_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_standard_patient_androstenedione_absolute_model_sin_cos_slope <-
+  fixed_effects_frame_min_standard_patient_androstenedione_absolute_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+```
+
+
+```{r, bootstrap ln cosinor multilevel models androstenedione on standard patient data}
+#this time we don't sink to a text file, we want to run through every bootstrap replication
+for (this_bootstrap_number in 1:n_bootstrap){
+  #print i if it's a multiple of 50
+  if (this_bootstrap_number %% 50 == 0) {
+    print(paste0("Replication number is : ", this_bootstrap_number))
+  }
+
+
+#create an empty frame to bind to that will be this bootstrap replication of standard_id_visit_data_androstenedione
+bootstrap_replication_standard_id_visit_data_androstenedione <-
+  data.frame(NULL)
+#we use our standard_patients_id_visits_bootstrap_list to pull create a version of standard_id_visit_data_androstenedione
+for (row_number in 1:length(standard_patients_id_visits_bootstrap_list[[this_bootstrap_number]])){
+  #take out the patient
+  id_visit_to_pull <- 
+    (standard_patients_id_visits_bootstrap_list[[this_bootstrap_number]][row_number])
+  #take out the patient data
+  id_visit_data_to_pull <-
+    subset(standard_patient_data_androstenedione, id_visit==id_visit_to_pull)
+  #replace the patient data id_visit label with the row_number that we are on
+  id_visit_data_to_pull$id_visit <- 
+    row_number
+  #then bind the new bootstrapped patient data into the frame
+  bootstrap_replication_standard_id_visit_data_androstenedione <-
+    rbind(
+      bootstrap_replication_standard_id_visit_data_androstenedione,
+      id_visit_data_to_pull
+    )
+}
+
+#we then use that bootstrap_replication_standard_id_visit_data_androstenedione and perform cosinor modelling with random intercept and random slope
+bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = bootstrap_replication_standard_id_visit_data_androstenedione)
+summary(bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope)
+rsquared(bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope)$Conditional
+
+#fit the predictions to the bootstrap version of the data frame
+bootstrap_replication_standard_id_visit_data_androstenedione$bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope <-
+  predict(bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope)
+
+#then fit predictions to the bootstrapped fixed effects frame for this replication
+bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame$fixed_effects_fit_this_replication <- 
+  predict(bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope, 
+          newdata = bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame, re.form = NA)
+
+#pull out the metrics we want from bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame$fixed_effects_fit_this_replication
+#pull out the whole row at minimum and use it to pull out time and value at trough
+minimum_row_of_fixed_effects_fit <-
+  bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame %>% 
+    slice_min(fixed_effects_fit_this_replication, n=1, with_ties = F)
+minimum_ln_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+minimum_absolute_androstenedione_of_fixed_effects_fit <-
+  exp(minimum_ln_androstenedione_of_fixed_effects_fit)
+time_rad_of_minimum_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+    
+#pull out the whole row at maximum and use it to pull out time and value at trough
+maximum_row_of_fixed_effects_fit <-
+  bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame %>% 
+    slice_max(fixed_effects_fit_this_replication, n=1, with_ties = F)
+maximum_ln_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+maximum_absolute_androstenedione_of_fixed_effects_fit <-
+  exp(maximum_ln_androstenedione_of_fixed_effects_fit)
+time_rad_of_maximum_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+
+#calculate the amplitude of the fixed effects fit in absolute terms as half of the peak to trough.
+    
+amplitude_of_ln_fixed_effects_fit <-
+  (maximum_ln_androstenedione_of_fixed_effects_fit - 
+  minimum_ln_androstenedione_of_fixed_effects_fit) / 2
+    
+amplitude_of_absolute_fixed_effects_fit <-
+  (maximum_absolute_androstenedione_of_fixed_effects_fit - 
+  minimum_absolute_androstenedione_of_fixed_effects_fit) / 2
+
+#now we have calculated everything for that fixed effects model fit, we can now put those metrics into a version of the outside frame to add to
+bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione_to_add <-
+  data.frame(
+    bootstrap_replication = this_bootstrap_number,
+    minimum_ln_androstenedione_of_fixed_effects_fit = 
+      minimum_ln_androstenedione_of_fixed_effects_fit,
+    minimum_absolute_androstenedione_of_fixed_effects_fit =
+      minimum_absolute_androstenedione_of_fixed_effects_fit,
+    time_rad_of_minimum_androstenedione_of_fixed_effects_fit =
+      time_rad_of_minimum_androstenedione_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit,
+    maximum_ln_androstenedione_of_fixed_effects_fit = 
+      maximum_ln_androstenedione_of_fixed_effects_fit,
+    maximum_absolute_androstenedione_of_fixed_effects_fit =
+      maximum_absolute_androstenedione_of_fixed_effects_fit,
+    time_rad_of_maximum_androstenedione_of_fixed_effects_fit =
+      time_rad_of_maximum_androstenedione_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit,
+    amplitude_of_ln_fixed_effects_fit =
+      amplitude_of_ln_fixed_effects_fit,
+    amplitude_of_absolute_fixed_effects_fit =
+      amplitude_of_absolute_fixed_effects_fit
+  )
+
+#we then bind that to the frame outside of the loop:
+bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione <-
+  rbind(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione,
+        bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione_to_add)
+
+#now to save the different fixed effects fits we create an appropriate name for the new column
+new_column_name <-
+  paste0("bootstrapped_standard_patient_androstenedione_ln_model_sin_cos_random_slope_fixed_effects_replication_", this_bootstrap_number)
+
+#rename the column 
+colnames(bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame)[colnames(bootstrapped_standard_patients_androstenedione_fixed_effects_fit_frame) == 
+  "fixed_effects_fit_this_replication"] <- 
+    new_column_name
+
+#we then close off the loop to move to the next bootstrap replication
+}
+
+
+#then we can report our bootstrapped parameters inside a text file:
+dir.create("Bootstrapped_cosinor_parameters")
+sink("Bootstrapped_cosinor_parameters/Bootstrapped_standard_patients_androstenedione.txt")
+cat(paste0("Number of bootstrap replications is: ", n_bootstrap))
+cat("********************************************************************************\n")
+cat("patients on standard glucocorticoid replacements androstenedione cosinor models with random slopes and random intercepts\n")
+cat("********************************************************************************\n")
+
+cat("\nBootstrap replication mean of minimum of patients on standard glucocorticoid replacement ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on standard glucocorticoid replacement ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on standard glucocorticoid replacement ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\n\nWe then take the exponent of all of those figures to report those numbers in absolute terms:\n\n")
+
+cat("\nBootstrap replication mean of minimum of patients on standard glucocorticoid replacement absolute androstenedione:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on standard glucocorticoid replacement absolute androstenedione:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on standard glucocorticoid replacement absolute androstenedione:\n")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_absolute_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_absolute_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_absolute_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_standard_patients_androstenedione$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+
+sink()
+```
+
+###########################
+Plot of Standard Glucocorticoid Replacement Patients fixed effects 17OHP
+###########################
+
+```{r, plot of fixed effects of ln cos sin models for ln values 17OHP}
+ln_sin_cosine_model_fixed_effect_plot_17OHP <- 
+  ggplot() +
+  #plot points of our ln readings of 17OHP
+  geom_point(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=ln_value_nM),
+             colour="darkgreen",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot lines of our ln readings of 17OHP
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="darkgreen",
+             alpha=0.1,
+             size=0.01) +
+  #plot our cosine sine model
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement_corrected, 
+                 y=normative_17OHP_ln_model_sin_cos_slope),
+             colour="darkgreen",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  geom_vline(xintercept=max_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  #plot points of our ln readings of 17OHP for patients
+  geom_point(data=standard_patient_data_17OHP, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=ln_value_nM),
+             colour="black",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our cosine sine model for patients
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=standard_patient_17OHP_ln_model_sin_cos_slope),
+             colour="blue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  geom_vline(xintercept=max_time_standard_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_standard_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  labs(y="ln 17OHP (ln nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope df"),
+       subtitle=paste0("max patient = ", 
+                       max_time_standard_patient_17OHP_ln_model_sin_cos_slope, 
+                       "; max normative = ", 
+                       max_time_normative_17OHP_ln_model_sin_cos_slope,
+                       " (hours past 3pm)")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_model_fixed_effect_plot_17OHP
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_model_fixed_effect_plot_17OHP", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_model_fixed_effect_plot_17OHP, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, plot the exponent of the fixed effects of the log model for 17OHP}
+exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP <- 
+  ggplot() +
+  #plot points of our absolute readings of 17OHP
+  geom_point(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=value_nM),
+             colour="darkgreen",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot lines of our absolute readings of 17OHP
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=value_nM,
+                 group=patient),
+             colour="darkgreen",
+             alpha=0.1,
+             size=0.01) +
+  #plot points of our absolutereadings of 17OHP for patients
+  geom_point(data=standard_patient_data_17OHP, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our cosine sine model for normative 
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement_corrected, 
+                 y=normative_17OHP_exp_ln_model_sin_cos_slope),
+             colour="darkgreen",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  #plot our cosine sine model for patients
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=standard_patient_17OHP_exp_ln_model_sin_cos_slope),
+             colour="blue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  geom_vline(xintercept=max_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  geom_vline(xintercept=max_time_standard_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_standard_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  labs(y="Absolute 17OHP (nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope"),
+       subtitle=paste0("max patient = ", 
+                       max_time_standard_patient_17OHP_ln_model_sin_cos_slope, 
+                       "; max normative = ", 
+                       max_time_normative_17OHP_ln_model_sin_cos_slope,
+                       " (hours past 3pm)")
+       ) +
+  themepowerpointtitle
+exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP + ylim(0,75)
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP_limited_axis", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP + ylim(0,75), 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+```
+
+###########################
+Chronocort Patient 17OHP
+############################
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_absolute_17OHP_cah_patient_chronocort.txt")
+# Fit the Multilevel Model with cosine term
+print("Null model random intercept")
+chronocort_patient_17OHP_absolute_model_null <- lmer(value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_absolute_model_null)
+rsquared(chronocort_patient_17OHP_absolute_model_null)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_absolute_model_null <-
+  predict(chronocort_patient_17OHP_absolute_model_null)
+
+print("Null model random slope")
+chronocort_patient_17OHP_absolute_model_null_slope <- lmer(value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_absolute_model_null_slope)
+rsquared(chronocort_patient_17OHP_absolute_model_null_slope)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_absolute_model_null_slope <-
+  predict(chronocort_patient_17OHP_absolute_model_null_slope)
+
+print("Cos only model with random intercept")
+chronocort_patient_17OHP_absolute_model_cos <- lmer(value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_absolute_model_cos)
+rsquared(chronocort_patient_17OHP_absolute_model_cos)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_absolute_model_cos <-
+  predict(chronocort_patient_17OHP_absolute_model_cos)
+
+print("Sin only model with random intercept")
+chronocort_patient_17OHP_absolute_model_sin <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_absolute_model_sin)
+rsquared(chronocort_patient_17OHP_absolute_model_sin)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_absolute_model_sin <-
+  predict(chronocort_patient_17OHP_absolute_model_sin)
+
+print("Cosinor model with random intercept")
+chronocort_patient_17OHP_absolute_model_sin_cos <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_absolute_model_sin_cos)
+rsquared(chronocort_patient_17OHP_absolute_model_sin_cos)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_absolute_model_sin_cos <-
+  predict(chronocort_patient_17OHP_absolute_model_sin_cos)
+
+print("Cosinor model with random slope")
+
+chronocort_patient_17OHP_absolute_model_sin_cos_slope <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_absolute_model_sin_cos_slope)
+rsquared(chronocort_patient_17OHP_absolute_model_sin_cos_slope)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_absolute_model_sin_cos_slope <-
+  predict(chronocort_patient_17OHP_absolute_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+anova(chronocort_patient_17OHP_absolute_model_null, chronocort_patient_17OHP_absolute_model_cos)
+anova(chronocort_patient_17OHP_absolute_model_null, chronocort_patient_17OHP_absolute_model_sin)
+anova(chronocort_patient_17OHP_absolute_model_null, chronocort_patient_17OHP_absolute_model_sin_cos)
+anova(chronocort_patient_17OHP_absolute_model_null, chronocort_patient_17OHP_absolute_model_sin_cos_slope)
+anova(chronocort_patient_17OHP_absolute_model_cos, chronocort_patient_17OHP_absolute_model_sin)
+
+print("Comparisons to random random slopes")
+anova(chronocort_patient_17OHP_absolute_model_null_slope, chronocort_patient_17OHP_absolute_model_cos)
+anova(chronocort_patient_17OHP_absolute_model_null_slope, chronocort_patient_17OHP_absolute_model_sin)
+anova(chronocort_patient_17OHP_absolute_model_null_slope, chronocort_patient_17OHP_absolute_model_sin_cos)
+anova(chronocort_patient_17OHP_absolute_model_null_slope, chronocort_patient_17OHP_absolute_model_sin_cos_slope)
+sink()
+```
+
+```{r, plot of cos sin models, code poached from file 28, for ln values}
+
+sin_cosine_chronocort_patient_17OHP_absolute_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of 17OHP
+  geom_point(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of 17OHP
+  geom_line(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=value_nM,
+                 group=patient),
+             colour="blue",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_17OHP_absolute_model_null_slope,
+                 group=patient),
+             colour="blue",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_17OHP_absolute_model_sin_cos_slope,
+                 group=patient),
+             colour="darkblue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  labs(y="Scaled markers",
+       x="Reading number",
+       title=paste0("Scaled Spline Curves All patients Overlaid with Degrees of Freedom"),
+       subtitle=paste0("Column = visit, Row = Arm. Red = Androstenedione, Blue = 17OHP")
+       ) +
+  themepowerpointtitle
+sin_cosine_chronocort_patient_17OHP_absolute_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("sin_cosine_chronocort_patient_17OHP_absolute_model_plot_patients_17OHP_facet_", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = sin_cosine_chronocort_patient_17OHP_absolute_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_ln_17OHP_cah_patient_chronocort.txt")
+# Fit the Multilevel Model with cosine term
+print("Null model random intercept")
+chronocort_patient_17OHP_ln_model_null_intercept <- lmer(ln_value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_ln_model_null_intercept)
+rsquared(chronocort_patient_17OHP_ln_model_null_intercept)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_ln_model_null_intercept <-
+  predict(chronocort_patient_17OHP_ln_model_null_intercept)
+
+print("Null model random slope")
+chronocort_patient_17OHP_ln_model_null_slope <- lmer(ln_value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_ln_model_null_slope)
+rsquared(chronocort_patient_17OHP_ln_model_null_slope)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_ln_model_null_slope <-
+  predict(chronocort_patient_17OHP_ln_model_null_slope)
+
+print("Cos only model with random intercept")
+chronocort_patient_17OHP_ln_model_cos <- lmer(ln_value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_ln_model_cos)
+rsquared(chronocort_patient_17OHP_ln_model_cos)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_ln_model_cos <-
+  predict(chronocort_patient_17OHP_ln_model_cos)
+
+print("Sin only model with random intercept")
+chronocort_patient_17OHP_ln_model_sin <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_ln_model_sin)
+rsquared(chronocort_patient_17OHP_ln_model_sin)
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_ln_model_sin <-
+  predict(chronocort_patient_17OHP_ln_model_sin)
+
+print("Cosinor model with random intercept")
+chronocort_patient_17OHP_ln_model_sin_cos <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_ln_model_sin_cos)
+rsquared(chronocort_patient_17OHP_ln_model_sin_cos)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_ln_model_sin_cos <-
+  predict(chronocort_patient_17OHP_ln_model_sin_cos)
+
+print("Cosinor model with random slope")
+chronocort_patient_17OHP_ln_model_sin_cos_slope <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_17OHP)
+summary(chronocort_patient_17OHP_ln_model_sin_cos_slope)
+rsquared(chronocort_patient_17OHP_ln_model_sin_cos_slope)$Conditional
+chronocort_patient_data_17OHP$chronocort_patient_17OHP_ln_model_sin_cos_slope <-
+  predict(chronocort_patient_17OHP_ln_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+anova(chronocort_patient_17OHP_ln_model_null_intercept, chronocort_patient_17OHP_ln_model_cos)
+anova(chronocort_patient_17OHP_ln_model_null_intercept, chronocort_patient_17OHP_ln_model_sin)
+anova(chronocort_patient_17OHP_ln_model_null_intercept, chronocort_patient_17OHP_ln_model_sin_cos)
+anova(chronocort_patient_17OHP_ln_model_null_intercept, chronocort_patient_17OHP_ln_model_sin_cos_slope)
+anova(chronocort_patient_17OHP_ln_model_cos, chronocort_patient_17OHP_ln_model_sin)
+
+print("Comparisons to random random slopes")
+anova(chronocort_patient_17OHP_ln_model_null_slope, chronocort_patient_17OHP_ln_model_cos)
+anova(chronocort_patient_17OHP_ln_model_null_slope, chronocort_patient_17OHP_ln_model_sin)
+anova(chronocort_patient_17OHP_ln_model_null_slope, chronocort_patient_17OHP_ln_model_sin_cos)
+anova(chronocort_patient_17OHP_ln_model_null_slope, chronocort_patient_17OHP_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, plot of cos sin models, code poached from file 28, for ln values}
+
+ln_sin_cosine_chronocort_patient_17OHP_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of 17OHP
+  geom_point(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of 17OHP
+  geom_line(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="blue",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_17OHP_ln_model_null_slope,
+                 group=patient),
+             colour="blue",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=chronocort_patient_data_17OHP, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_17OHP_ln_model_sin_cos_slope,
+                 group=patient),
+             colour="darkblue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  labs(y="Scaled markers",
+       x="Reading number",
+       title=paste0("Scaled Spline Curves All patients Overlaid with Degrees of Freedom"),
+       subtitle=paste0("Column = visit, Row = Arm. Red = Androstenedione, Blue = 17OHP")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_chronocort_patient_17OHP_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_chronocort_patient_17OHP_model_plot_patients_17OHP_facet_", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_chronocort_patient_17OHP_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+
+```{r, bootstrap ln cosinor multilevel models 17OHP on chronocort data}
+#this time we don't sink to a text file, we want to run through every bootstrap replication
+for (this_bootstrap_number in 1:n_bootstrap){
+  #print i if it's a multiple of 50
+  if (this_bootstrap_number %% 50 == 0) {
+    print(paste0("Replication number is : ", this_bootstrap_number))
+  }
+
+#create an empty frame to bind to that will be this bootstrap replication of chronocort_id_visit_data_17OHP
+bootstrap_replication_chronocort_id_visit_data_17OHP <-
+  data.frame(NULL)
+#we use our chronocort_patients_id_visits_bootstrap_list to pull create a version of chronocort_id_visit_data_17OHP
+for (row_number in 1:length(chronocort_patients_id_visits_bootstrap_list[[this_bootstrap_number]])){
+  #take out the patient
+  id_visit_to_pull <- 
+    (chronocort_patients_id_visits_bootstrap_list[[this_bootstrap_number]][row_number])
+  #take out the patient data
+  id_visit_data_to_pull <-
+    subset(chronocort_patient_data_17OHP, id_visit==id_visit_to_pull)
+  #replace the patient data id_visit label with the row_number that we are on
+  id_visit_data_to_pull$id_visit <- 
+    row_number
+  #then bind the new bootstrapped patient data into the frame
+  bootstrap_replication_chronocort_id_visit_data_17OHP <-
+    rbind(
+      bootstrap_replication_chronocort_id_visit_data_17OHP,
+      id_visit_data_to_pull
+    )
+}
+
+#we then use that bootstrap_replication_chronocort_id_visit_data_17OHP and perform cosinor modelling with random intercept and random slope
+bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = bootstrap_replication_chronocort_id_visit_data_17OHP)
+summary(bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope)
+rsquared(bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope)$Conditional
+
+#fit the predictions to the bootstrap version of the data frame
+bootstrap_replication_chronocort_id_visit_data_17OHP$bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope <-
+  predict(bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope)
+
+#then fit predictions to the bootstrapped fixed effects frame for this replication
+bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame$fixed_effects_fit_this_replication <- 
+  predict(bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope, 
+          newdata = bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame, re.form = NA)
+
+#pull out the metrics we want from bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame$fixed_effects_fit_this_replication
+#pull out the whole row at minimum and use it to pull out time and value at trough
+minimum_row_of_fixed_effects_fit <-
+  bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame %>% 
+    slice_min(fixed_effects_fit_this_replication, n=1, with_ties = F)
+minimum_ln_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+minimum_absolute_17OHP_of_fixed_effects_fit <-
+  exp(minimum_ln_17OHP_of_fixed_effects_fit)
+time_rad_of_minimum_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+    
+#pull out the whole row at maximum and use it to pull out time and value at trough
+maximum_row_of_fixed_effects_fit <-
+  bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame %>% 
+    slice_max(fixed_effects_fit_this_replication, n=1, with_ties = F)
+maximum_ln_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+maximum_absolute_17OHP_of_fixed_effects_fit <-
+  exp(maximum_ln_17OHP_of_fixed_effects_fit)
+time_rad_of_maximum_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+
+#calculate the amplitude of the fixed effects fit in absolute terms as half of the peak to trough. 
+amplitude_of_ln_fixed_effects_fit <-
+  (maximum_ln_17OHP_of_fixed_effects_fit - 
+  minimum_ln_17OHP_of_fixed_effects_fit) / 2
+    
+amplitude_of_absolute_fixed_effects_fit <-
+  (maximum_absolute_17OHP_of_fixed_effects_fit - 
+  minimum_absolute_17OHP_of_fixed_effects_fit) / 2
+
+#now we have calculated everything for that fixed effects model fit, we can now put those metrics into a version of the outside frame to add to
+bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP_to_add <-
+  data.frame(
+    bootstrap_replication = this_bootstrap_number,
+    minimum_ln_17OHP_of_fixed_effects_fit = 
+      minimum_ln_17OHP_of_fixed_effects_fit,
+    minimum_absolute_17OHP_of_fixed_effects_fit =
+      minimum_absolute_17OHP_of_fixed_effects_fit,
+    time_rad_of_minimum_17OHP_of_fixed_effects_fit =
+      time_rad_of_minimum_17OHP_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_minimum_17OHP_of_fixed_effects_fit,
+    maximum_ln_17OHP_of_fixed_effects_fit = 
+      maximum_ln_17OHP_of_fixed_effects_fit,
+    maximum_absolute_17OHP_of_fixed_effects_fit =
+      maximum_absolute_17OHP_of_fixed_effects_fit,
+    time_rad_of_maximum_17OHP_of_fixed_effects_fit =
+      time_rad_of_maximum_17OHP_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_maximum_17OHP_of_fixed_effects_fit,
+    amplitude_of_ln_fixed_effects_fit =
+      amplitude_of_ln_fixed_effects_fit,
+    amplitude_of_absolute_fixed_effects_fit =
+      amplitude_of_absolute_fixed_effects_fit
+  )
+
+#we then bind that to the frame outside of the loop:
+bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP <-
+  rbind(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP,
+        bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP_to_add)
+
+#now to save the different fixed effects fits we create an appropriate name for the new column
+new_column_name <-
+  paste0("bootstrapped_chronocort_patient_17OHP_ln_model_sin_cos_random_slope_fixed_effects_replication_", this_bootstrap_number)
+
+#rename the column 
+colnames(bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame)[colnames(bootstrapped_chronocort_patients_17OHP_fixed_effects_fit_frame) == 
+  "fixed_effects_fit_this_replication"] <- 
+    new_column_name
+
+#we then close off the loop to move to the next bootstrap replication
+}
+
+
+#then we can report our bootstrapped parameters inside a text file:
+dir.create("Bootstrapped_cosinor_parameters")
+sink("Bootstrapped_cosinor_parameters/Bootstrapped_chronocort_patients_17OHP.txt")
+cat(paste0("Number of bootstrap replications is: ", n_bootstrap))
+cat("********************************************************************************\n")
+cat("patients on chronocort glucocorticoid replacements 17OHP cosinor models with random slopes and random intercepts\n")
+cat("********************************************************************************\n")
+
+cat("\nBootstrap replication mean of minimum of patients on chronocort glucocorticoid replacement ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on chronocort glucocorticoid replacement ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on chronocort glucocorticoid replacement ln 17OHP:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\n\nWe then take the exponent of all of those figures to report those numbers in absolute terms:\n\n")
+
+cat("\nBootstrap replication mean of minimum of patients on chronocort glucocorticoid replacement absolute 17OHP:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$minimum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on chronocort glucocorticoid replacement absolute 17OHP:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$maximum_ln_17OHP_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on chronocort glucocorticoid replacement absolute 17OHP:\n")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_absolute_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_absolute_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_absolute_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_17OHP$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+
+sink()
+```
+
+
+###########################
+Chronocort Patient androstenedione
+############################
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_absolute_androstenedione_cah_patient_chronocort.txt")
+print("Null model random intercept")
+# Fit the Multilevel Model with cosine term
+chronocort_patient_androstenedione_absolute_model_null <- lmer(value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_absolute_model_null)
+rsquared(chronocort_patient_androstenedione_absolute_model_null)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_absolute_model_null <-
+  predict(chronocort_patient_androstenedione_absolute_model_null)
+print("Null model random slope")
+
+chronocort_patient_androstenedione_absolute_model_null_slope <- lmer(value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_absolute_model_null_slope)
+rsquared(chronocort_patient_androstenedione_absolute_model_null_slope)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_absolute_model_null_slope <-
+  predict(chronocort_patient_androstenedione_absolute_model_null_slope)
+
+print("Cos only model with random intercept")
+chronocort_patient_androstenedione_absolute_model_cos <- lmer(value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_absolute_model_cos)
+rsquared(chronocort_patient_androstenedione_absolute_model_cos)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_absolute_model_cos <-
+  predict(chronocort_patient_androstenedione_absolute_model_cos)
+
+print("Sin only model with random intercept")
+chronocort_patient_androstenedione_absolute_model_sin <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_absolute_model_sin)
+rsquared(chronocort_patient_androstenedione_absolute_model_sin)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_absolute_model_sin <-
+  predict(chronocort_patient_androstenedione_absolute_model_sin)
+
+print("Cosinor model with random intercept")
+chronocort_patient_androstenedione_absolute_model_sin_cos <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_absolute_model_sin_cos)
+rsquared(chronocort_patient_androstenedione_absolute_model_sin_cos)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_absolute_model_sin_cos <-
+  predict(chronocort_patient_androstenedione_absolute_model_sin_cos)
+
+print("Cosinor model with random slope")
+chronocort_patient_androstenedione_absolute_model_sin_cos_slope <- lmer(value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_absolute_model_sin_cos_slope)
+rsquared(chronocort_patient_androstenedione_absolute_model_sin_cos_slope)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_absolute_model_sin_cos_slope <-
+  predict(chronocort_patient_androstenedione_absolute_model_sin_cos_slope)
+
+print("Comparisons to random random intercepts")
+
+anova(chronocort_patient_androstenedione_absolute_model_null, chronocort_patient_androstenedione_absolute_model_cos)
+anova(chronocort_patient_androstenedione_absolute_model_null, chronocort_patient_androstenedione_absolute_model_sin)
+anova(chronocort_patient_androstenedione_absolute_model_null, chronocort_patient_androstenedione_absolute_model_sin_cos)
+anova(chronocort_patient_androstenedione_absolute_model_null, chronocort_patient_androstenedione_absolute_model_sin_cos_slope)
+anova(chronocort_patient_androstenedione_absolute_model_cos, chronocort_patient_androstenedione_absolute_model_sin)
+print("Comparisons to random random slopes")
+anova(chronocort_patient_androstenedione_absolute_model_null_slope, chronocort_patient_androstenedione_absolute_model_cos)
+anova(chronocort_patient_androstenedione_absolute_model_null_slope, chronocort_patient_androstenedione_absolute_model_sin)
+anova(chronocort_patient_androstenedione_absolute_model_null_slope, chronocort_patient_androstenedione_absolute_model_sin_cos)
+anova(chronocort_patient_androstenedione_absolute_model_null_slope, chronocort_patient_androstenedione_absolute_model_sin_cos_slope)
+sink()
+```
+
+```{r, plot of cos sin models, code poached from file 28, for ln values}
+
+sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of androstenedione
+  geom_point(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=value_nM),
+             colour="darkorange",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of androstenedione
+  geom_line(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=value_nM,
+                 group=patient),
+             colour="darkorange",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_androstenedione_absolute_model_null_slope,
+                 group=patient),
+             colour="darkorange",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_androstenedione_absolute_model_sin_cos_slope,
+                 group=patient),
+             colour="orange",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  labs(y="Scaled markers",
+       x="Reading number",
+       title=paste0("Scaled Spline Curves All patients Overlaid with Degrees of Freedom"),
+       subtitle=paste0("Column = visit, Row = Arm. Red = Androstenedione, Blue = androstenedione")
+       ) +
+  themepowerpointtitle
+sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patients_androstenedione_facet_", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, fit ln multilevel models}
+dir.create("cosinor_modelling_outputs")
+sink("cosinor_modelling_outputs/cosinor_modelling_outputs_ln_androstenedione_cah_patient_chronocort.txt")
+
+print("Null model random intercept")
+# Fit the Multilevel Model with cosine term
+chronocort_patient_androstenedione_ln_model_null_intercept <- lmer(ln_value_nM ~ Time_rad + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_ln_model_null_intercept)
+rsquared(chronocort_patient_androstenedione_ln_model_null_intercept)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_ln_model_null_intercept <-
+  predict(chronocort_patient_androstenedione_ln_model_null_intercept)
+
+print("Null model random slope")
+chronocort_patient_androstenedione_ln_model_null_slope <- lmer(ln_value_nM ~ Time_rad + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_ln_model_null_slope)
+rsquared(chronocort_patient_androstenedione_ln_model_null_slope)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_ln_model_null_slope <-
+  predict(chronocort_patient_androstenedione_ln_model_null_slope)
+
+print("Cos only model with random intercept")
+
+chronocort_patient_androstenedione_ln_model_cos <- lmer(ln_value_nM ~ cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_ln_model_cos)
+rsquared(chronocort_patient_androstenedione_ln_model_cos)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_ln_model_cos <-
+  predict(chronocort_patient_androstenedione_ln_model_cos)
+
+print("Sin only model with random intercept")
+
+chronocort_patient_androstenedione_ln_model_sin <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_ln_model_sin)
+rsquared(chronocort_patient_androstenedione_ln_model_sin)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_ln_model_sin <-
+  predict(chronocort_patient_androstenedione_ln_model_sin)
+
+print("Cosinor model with random intercept")
+
+chronocort_patient_androstenedione_ln_model_sin_cos <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (1 | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_ln_model_sin_cos)
+rsquared(chronocort_patient_androstenedione_ln_model_sin_cos)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_ln_model_sin_cos <-
+  predict(chronocort_patient_androstenedione_ln_model_sin_cos)
+
+print("Cosinor model with random slope")
+
+chronocort_patient_androstenedione_ln_model_sin_cos_slope <- lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | id_visit), 
+              data = chronocort_patient_data_androstenedione)
+summary(chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+rsquared(chronocort_patient_androstenedione_ln_model_sin_cos_slope)$Conditional
+chronocort_patient_data_androstenedione$chronocort_patient_androstenedione_ln_model_sin_cos_slope <-
+  predict(chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+
+
+print("Comparisons to random random intercepts")
+anova(chronocort_patient_androstenedione_ln_model_null_intercept, chronocort_patient_androstenedione_ln_model_cos)
+anova(chronocort_patient_androstenedione_ln_model_null_intercept, chronocort_patient_androstenedione_ln_model_sin)
+anova(chronocort_patient_androstenedione_ln_model_null_intercept, chronocort_patient_androstenedione_ln_model_sin_cos)
+anova(chronocort_patient_androstenedione_ln_model_null_intercept, chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+anova(chronocort_patient_androstenedione_ln_model_cos, chronocort_patient_androstenedione_ln_model_sin)
+
+print("Comparisons to random random slopes")
+anova(chronocort_patient_androstenedione_ln_model_null_slope, chronocort_patient_androstenedione_ln_model_cos)
+anova(chronocort_patient_androstenedione_ln_model_null_slope, chronocort_patient_androstenedione_ln_model_sin)
+anova(chronocort_patient_androstenedione_ln_model_null_slope, chronocort_patient_androstenedione_ln_model_sin_cos)
+anova(chronocort_patient_androstenedione_ln_model_null_slope, chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, plot of cos sin models, code poached from file 28, for ln values}
+ln_sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patient <- 
+  ggplot() +
+  #plot our ln readings of androstenedione
+  geom_point(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM),
+             colour="darkorange",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our ln readings of androstenedione
+  geom_line(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="darkorange",
+             alpha=0.1,
+             size=0.01) +
+  #plot our null model
+  geom_line(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_androstenedione_ln_model_null_slope,
+                 group=patient),
+             colour="darkorange",
+            linetype="dashed",
+             alpha=0.8,
+             linewidth=0.5) +
+  #plot our cosine sine model
+  geom_line(data=chronocort_patient_data_androstenedione, 
+             aes(x=Time_rad, 
+                 y=chronocort_patient_androstenedione_ln_model_sin_cos_slope,
+                 group=patient),
+             colour="orange",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=0.5) +
+  #facet it
+  facet_wrap(~id_visit) +
+  labs(y="ln Androstenedione (ln nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope df"),
+       subtitle=paste0("")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patient
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patients_androstenedione_facet_", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_chronocort_patient_androstenedione_absolute_model_plot_patient, 
+       device="tiff",  
+       width=40, height=20, 
+       compression = "lzw", limitsize=F)
+
+```
+
+```{r, add to our fixed effects frame}
+fixed_effects_frame$normative_17OHP_ln_model_null_slope <- 
+  predict(normative_17OHP_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$normative_17OHP_ln_model_sin_cos_slope <- 
+  predict(normative_17OHP_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+fixed_effects_frame$normative_17OHP_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$normative_17OHP_ln_model_sin_cos_slope)
+
+fixed_effects_frame$normative_androstenedione_ln_model_null_slope <- 
+  predict(normative_androstenedione_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$normative_androstenedione_ln_model_sin_cos_slope <- 
+  predict(normative_androstenedione_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+fixed_effects_frame$normative_17OHP_exp_androstenedione_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$normative_androstenedione_ln_model_sin_cos_slope)
+
+
+lme4::ranef(normative_17OHP_ln_model_null_intercept)
+lme4::ranef(normative_17OHP_ln_model_null_slope)
+lme4::fixef(normative_17OHP_ln_model_null_intercept)
+lme4::fixef(normative_17OHP_ln_model_null_slope)
+anova(normative_17OHP_ln_model_null_slope, normative_17OHP_ln_model_null_intercept)
+
+
+#Now that frame means we have readings from 9am in normative data. We need to convert those to 3pm
+fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected <-
+  fixed_effects_frame$time_of_test_hours_past_first_measurement - 6
+fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected <-
+  ifelse(fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected <0,
+         fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected + 24,
+         fixed_effects_frame$time_of_test_hours_past_first_measurement_corrected)
+
+#We also need to correct the normative data points
+normative_data_17OHP$Time_corrected <-
+  normative_data_17OHP$Time - 6
+normative_data_17OHP$Time_corrected <-
+  ifelse(normative_data_17OHP$Time_corrected <0,
+         normative_data_17OHP$Time_corrected + 24,
+         normative_data_17OHP$Time_corrected)
+
+
+#take out our maximum normative 17OHP ln
+fixed_effects_frame_max_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(normative_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_normative_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+#take out our minimum normative 17OHP ln
+fixed_effects_frame_min_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(normative_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_normative_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_normative_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+#take out our maximum androstenedione ln
+fixed_effects_frame_max_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(normative_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_normative_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+
+#take out our minimum androstenedione ln
+fixed_effects_frame_min_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(normative_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_normative_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_normative_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement_corrected
+```
+
+```{r, add our fixed effects for patient 17OHP to our already created dataframe}
+fixed_effects_frame$chronocort_patient_17OHP_ln_model_null_slope <- 
+  predict(chronocort_patient_17OHP_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$chronocort_patient_17OHP_ln_model_sin_cos_slope <- 
+  predict(chronocort_patient_17OHP_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$chronocort_patient_17OHP_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$chronocort_patient_17OHP_ln_model_sin_cos_slope)
+
+fixed_effects_frame$chronocort_patient_17OHP_absolute_model_null_slope <- 
+  predict(chronocort_patient_17OHP_absolute_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$chronocort_patient_17OHP_absolute_model_sin_cos_slope <- 
+  predict(chronocort_patient_17OHP_absolute_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+
+#take out our maximum ln
+fixed_effects_frame_max_chronocort_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(chronocort_patient_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_chronocort_patient_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum ln
+fixed_effects_frame_min_chronocort_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(chronocort_patient_17OHP_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_chronocort_patient_17OHP_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_chronocort_patient_17OHP_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our maximum absolute
+fixed_effects_frame_max_chronocort_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(chronocort_patient_17OHP_absolute_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_chronocort_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame_max_chronocort_patient_17OHP_absolute_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum absolute
+fixed_effects_frame_min_chronocort_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(chronocort_patient_17OHP_absolute_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_chronocort_patient_17OHP_absolute_model_sin_cos_slope <-
+  fixed_effects_frame_min_chronocort_patient_17OHP_absolute_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+```
+
+```{r, add our fixed effects for patient androstenedione to our already created dataframe}
+fixed_effects_frame$chronocort_patient_androstenedione_ln_model_null_slope <- 
+  predict(chronocort_patient_androstenedione_ln_model_null_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$chronocort_patient_androstenedione_ln_model_sin_cos_slope <- 
+  predict(chronocort_patient_androstenedione_ln_model_sin_cos_slope, newdata = fixed_effects_frame, re.form = NA)
+fixed_effects_frame$chronocort_patient_androstenedione_exp_ln_model_sin_cos_slope <- 
+  exp(fixed_effects_frame$chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+
+#take out our maximum ln
+fixed_effects_frame_max_chronocort_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_max(chronocort_patient_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+max_time_chronocort_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_max_chronocort_patient_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+#take out our minimum ln
+fixed_effects_frame_min_chronocort_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame %>% 
+  slice_min(chronocort_patient_androstenedione_ln_model_sin_cos_slope, n=1, with_ties = F)
+
+min_time_chronocort_patient_androstenedione_ln_model_sin_cos_slope <-
+  fixed_effects_frame_min_chronocort_patient_androstenedione_ln_model_sin_cos_slope$time_of_test_hours_past_first_measurement
+
+```
+
+```{r, plot of fixed effects of ln cos sin models for ln values}
+ln_sin_cosine_model_fixed_effect_plot_17OHP <- 
+  ggplot() +
+  #plot points of our ln readings of 17OHP
+  geom_point(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=ln_value_nM),
+             colour="darkgreen",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot lines of our ln readings of 17OHP
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=ln_value_nM,
+                 group=patient),
+             colour="darkgreen",
+             alpha=0.1,
+             size=0.01) +
+  #plot our cosine sine model
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement_corrected, 
+                 y=normative_17OHP_ln_model_sin_cos_slope),
+             colour="darkgreen",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  geom_vline(xintercept=max_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  #plot points of our ln readings of 17OHP for patients
+  geom_point(data=chronocort_patient_data_17OHP, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=ln_value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our cosine sine model for patients
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=chronocort_patient_17OHP_ln_model_sin_cos_slope),
+             colour="blue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  geom_vline(xintercept=max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_chronocort_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  labs(y="ln 17OHP (ln nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope df"),
+       subtitle=paste0("max patient = ", 
+                       max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope, 
+                       "; max normative = ", 
+                       max_time_normative_17OHP_ln_model_sin_cos_slope,
+                       " (hours past 3pm)")
+       ) +
+  themepowerpointtitle
+ln_sin_cosine_model_fixed_effect_plot_17OHP
+dir.create(paste0("sin_cosine_model_plots/"))
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("ln_sin_cosine_model_fixed_effect_plot_17OHP", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = ln_sin_cosine_model_fixed_effect_plot_17OHP, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, plot the exponent of the fixed effects of the log model}
+exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP <- 
+  ggplot() +
+  #plot points of our absolute readings of 17OHP
+  geom_point(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=value_nM),
+             colour="darkgreen",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot lines of our absolute readings of 17OHP
+  geom_line(data=normative_data_17OHP, 
+             aes(x=Time_corrected, 
+                 y=value_nM,
+                 group=patient),
+             colour="darkgreen",
+             alpha=0.1,
+             size=0.01) +
+  #plot points of our absolutereadings of 17OHP for patients
+  geom_point(data=chronocort_patient_data_17OHP, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=value_nM),
+             colour="blue",
+             alpha=0.2,
+             shape="circle",
+             size=1) +
+  #plot our cosine sine model for normative 
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement_corrected, 
+                 y=normative_17OHP_exp_ln_model_sin_cos_slope),
+             colour="darkgreen",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  #plot our cosine sine model for patients
+  geom_line(data=fixed_effects_frame, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=chronocort_patient_17OHP_exp_ln_model_sin_cos_slope),
+             colour="blue",
+            linetype="solid",
+             alpha=0.8,
+             linewidth=2) +
+  geom_vline(xintercept=max_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_normative_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="darkgreen",
+             linetype="dashed") + 
+  geom_vline(xintercept=max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  geom_vline(xintercept=min_time_chronocort_patient_17OHP_ln_model_sin_cos_slope,
+             linewidth=2,
+             colour="blue",
+             linetype="dashed") + 
+  labs(y="Absolute 17OHP (nmol/l)",
+       x="Hours past 3pm",
+       title=paste0("Multilevel model fits - random slopes versus cosinor model with random slope"),
+       subtitle=paste0("max patient = ", 
+                       max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope, 
+                       "; max normative = ", 
+                       max_time_normative_17OHP_ln_model_sin_cos_slope,
+                       " (hours past 3pm)")
+       ) +
+  themepowerpointtitle
+exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP + ylim(0,75)
+dir.create(paste0("sin_cosine_model_plots/"))
+ggsave(filename=paste0("exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP_limited_axis", ".tif"), 
+       path=paste0("sin_cosine_model_plots/"),
+       plot = exponent_ln_sin_cosine_model_fixed_effect_plot_17OHP + ylim(0,75), 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+```
+
+
+```{r, bootstrap ln cosinor multilevel models androstenedione on chronocort data}
+#this time we don't sink to a text file, we want to run through every bootstrap replication
+for (this_bootstrap_number in 1:n_bootstrap){
+  #print i if it's a multiple of 50
+  if (this_bootstrap_number %% 50 == 0) {
+    print(paste0("Replication number is : ", this_bootstrap_number))
+  }
+
+
+#create an empty frame to bind to that will be this bootstrap replication of chronocort_id_visit_data_androstenedione
+bootstrap_replication_chronocort_id_visit_data_androstenedione <-
+  data.frame(NULL)
+#we use our chronocort_patients_id_visits_bootstrap_list to pull create a version of chronocort_id_visit_data_androstenedione
+for (row_number in 1:length(chronocort_patients_id_visits_bootstrap_list[[this_bootstrap_number]])){
+  #take out the patient
+  id_visit_to_pull <- 
+    (chronocort_patients_id_visits_bootstrap_list[[this_bootstrap_number]][row_number])
+  #take out the patient data
+  id_visit_data_to_pull <-
+    subset(chronocort_patient_data_androstenedione, id_visit==id_visit_to_pull)
+  #replace the patient data id_visit label with the row_number that we are on
+  id_visit_data_to_pull$id_visit <- 
+    row_number
+  #then bind the new bootstrapped patient data into the frame
+  bootstrap_replication_chronocort_id_visit_data_androstenedione <-
+    rbind(
+      bootstrap_replication_chronocort_id_visit_data_androstenedione,
+      id_visit_data_to_pull
+    )
+}
+
+#we then use that bootstrap_replication_chronocort_id_visit_data_androstenedione and perform cosinor modelling with random intercept and random slope
+bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope <- 
+  lmer(ln_value_nM ~ 
+                sin(Time_rad) + 
+                cos(Time_rad) + 
+                (Time_rad | patient), 
+              data = bootstrap_replication_chronocort_id_visit_data_androstenedione)
+summary(bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope)
+rsquared(bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope)$Conditional
+
+#fit the predictions to the bootstrap version of the data frame
+bootstrap_replication_chronocort_id_visit_data_androstenedione$bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope <-
+  predict(bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope)
+
+#then fit predictions to the bootstrapped fixed effects frame for this replication
+bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame$fixed_effects_fit_this_replication <- 
+  predict(bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope, 
+          newdata = bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame, re.form = NA)
+
+#pull out the metrics we want from bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame$fixed_effects_fit_this_replication
+#pull out the whole row at minimum and use it to pull out time and value at trough
+minimum_row_of_fixed_effects_fit <-
+  bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame %>% 
+    slice_min(fixed_effects_fit_this_replication, n=1, with_ties = F)
+minimum_ln_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+minimum_absolute_androstenedione_of_fixed_effects_fit <-
+  exp(minimum_ln_androstenedione_of_fixed_effects_fit)
+time_rad_of_minimum_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit <-
+  (minimum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+    
+#pull out the whole row at maximum and use it to pull out time and value at trough
+maximum_row_of_fixed_effects_fit <-
+  bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame %>% 
+    slice_max(fixed_effects_fit_this_replication, n=1, with_ties = F)
+maximum_ln_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$fixed_effects_fit_this_replication)
+maximum_absolute_androstenedione_of_fixed_effects_fit <-
+  exp(maximum_ln_androstenedione_of_fixed_effects_fit)
+time_rad_of_maximum_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$Time_rad)
+time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit <-
+  (maximum_row_of_fixed_effects_fit$time_of_test_hours_past_first_measurement)
+
+#calculate the amplitude of the fixed effects fit in absolute terms as half of the peak to trough. 
+amplitude_of_ln_fixed_effects_fit <-
+  (maximum_ln_androstenedione_of_fixed_effects_fit - 
+  minimum_ln_androstenedione_of_fixed_effects_fit) / 2
+    
+amplitude_of_absolute_fixed_effects_fit <-
+  (maximum_absolute_androstenedione_of_fixed_effects_fit - 
+  minimum_absolute_androstenedione_of_fixed_effects_fit) / 2
+
+#now we have calculated everything for that fixed effects model fit, we can now put those metrics into a version of the outside frame to add to
+bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione_to_add <-
+  data.frame(
+    bootstrap_replication = this_bootstrap_number,
+    minimum_ln_androstenedione_of_fixed_effects_fit = 
+      minimum_ln_androstenedione_of_fixed_effects_fit,
+    minimum_absolute_androstenedione_of_fixed_effects_fit =
+      minimum_absolute_androstenedione_of_fixed_effects_fit,
+    time_rad_of_minimum_androstenedione_of_fixed_effects_fit =
+      time_rad_of_minimum_androstenedione_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_minimum_androstenedione_of_fixed_effects_fit,
+    maximum_ln_androstenedione_of_fixed_effects_fit = 
+      maximum_ln_androstenedione_of_fixed_effects_fit,
+    maximum_absolute_androstenedione_of_fixed_effects_fit =
+      maximum_absolute_androstenedione_of_fixed_effects_fit,
+    time_rad_of_maximum_androstenedione_of_fixed_effects_fit =
+      time_rad_of_maximum_androstenedione_of_fixed_effects_fit,
+    time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit =
+      time_hours_past_first_measurement_of_maximum_androstenedione_of_fixed_effects_fit,
+    amplitude_of_ln_fixed_effects_fit =
+      amplitude_of_ln_fixed_effects_fit,
+    amplitude_of_absolute_fixed_effects_fit =
+      amplitude_of_absolute_fixed_effects_fit
+  )
+
+#we then bind that to the frame outside of the loop:
+bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione <-
+  rbind(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione,
+        bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione_to_add)
+
+#now to save the different fixed effects fits we create an appropriate name for the new column
+new_column_name <-
+  paste0("bootstrapped_chronocort_patient_androstenedione_ln_model_sin_cos_random_slope_fixed_effects_replication_", this_bootstrap_number)
+
+#rename the column 
+colnames(bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame)[colnames(bootstrapped_chronocort_patients_androstenedione_fixed_effects_fit_frame) == 
+  "fixed_effects_fit_this_replication"] <- 
+    new_column_name
+
+#we then close off the loop to move to the next bootstrap replication
+}
+
+
+#then we can report our bootstrapped parameters inside a text file:
+dir.create("Bootstrapped_cosinor_parameters")
+sink("Bootstrapped_cosinor_parameters/Bootstrapped_chronocort_patients_androstenedione.txt")
+cat(paste0("Number of bootstrap replications is: ", n_bootstrap))
+cat("********************************************************************************\n")
+cat("patients on chronocort glucocorticoid replacements androstenedione cosinor models with random slopes and random intercepts\n")
+cat("********************************************************************************\n")
+
+cat("\nBootstrap replication mean of minimum of patients on chronocort glucocorticoid replacement ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on chronocort glucocorticoid replacement ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on chronocort glucocorticoid replacement ln androstenedione:\n")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" (95% CI: ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(" to ")
+cat(round(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit), digits=2))
+cat(")\n")
+
+cat("\n\nWe then take the exponent of all of those figures to report those numbers in absolute terms:\n\n")
+
+cat("\nBootstrap replication mean of minimum of patients on chronocort glucocorticoid replacement absolute androstenedione:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$minimum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of maximum of patients on chronocort glucocorticoid replacement absolute androstenedione:\n")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round(exp(mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$maximum_ln_androstenedione_of_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+cat("\nBootstrap replication mean of amplitude of patients on chronocort glucocorticoid replacement absolute androstenedione:\n")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_absolute_fixed_effects_fit)), digits=2))
+cat(" (95% CI: ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_absolute_fixed_effects_fit) -
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(" to ")
+cat(round((mean(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_absolute_fixed_effects_fit) +
+  1.96 * sd(bootstrapped_fixed_effects_cosinusoidal_metrics_chronocort_patients_androstenedione$amplitude_of_ln_fixed_effects_fit)), digits=2))
+cat(")\n")
+
+
+sink()
+```
+
+
+```{r, extract parameters of the fixed effects models}
+sink("cosinor_modelling_outputs/Parameters of fixed effects models.txt")
+print("17OHP amplitude of exponent of normative model (height of peak to mesor)")
+print("The model used the ln values with sine and cosine terms with a random intercept and random slope")
+print("I quote half the distance of peak to trough - technically this is slightly bastardised as the model is fit to the ln values, so the trough to mesor is less than the mesor to peak, but this is the easiest and most sensible metric to quote and does make sense for comparison purposes.")
+(max(fixed_effects_frame$normative_17OHP_exp_ln_model_sin_cos_slope) -
+  min(fixed_effects_frame$normative_17OHP_exp_ln_model_sin_cos_slope))/2
+print("17OHP minimum time of normative model")
+print(min_time_normative_17OHP_ln_model_sin_cos_slope)
+print("17OHP maximum time of normative model")
+print(max_time_normative_17OHP_ln_model_sin_cos_slope)
+print("17OHP amplitude of exponent of chronocort patients model (height of peak to mesor)")
+print("The model used the ln values with sine and cosine terms with a random intercept and random slope")
+(max(fixed_effects_frame$chronocort_patient_17OHP_exp_ln_model_sin_cos_slope) -
+  min(fixed_effects_frame$chronocort_patient_17OHP_exp_ln_model_sin_cos_slope))/2
+print("17OHP minimum time of chronocort patient model")
+print(min_time_chronocort_patient_17OHP_ln_model_sin_cos_slope)
+print("17OHP maximum time of chronocort patient model")
+print(max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope)
+print("17OHP amplitude of exponent of standard therapy patients model (height of peak to mesor)")
+print("The model used the ln values with sine and cosine terms with a random intercept and random slope")
+(max(fixed_effects_frame$standard_patient_17OHP_exp_ln_model_sin_cos_slope) -
+  min(fixed_effects_frame$standard_patient_17OHP_exp_ln_model_sin_cos_slope))/2
+print("17OHP minimum time of standard therapy patient model")
+print(min_time_standard_patient_17OHP_ln_model_sin_cos_slope)
+print("17OHP maximum time of standard therapy patient model")
+print(max_time_standard_patient_17OHP_ln_model_sin_cos_slope)
+
+print(" ")
+print("********")
+print("********")
+print("********")
+print(" ")
+
+print("Androstenedione amplitude of exponent of normative model (height of peak to mesor)")
+print("The model used the ln values with sine and cosine terms with a random intercept and random slope")
+(max(fixed_effects_frame$normative_androstenedione_exp_ln_model_sin_cos_slope) -
+  min(fixed_effects_frame$normative_androstenedione_exp_ln_model_sin_cos_slope))/2
+print("Androstenedione minimum time of normative model")
+print(min_time_normative_androstenedione_ln_model_sin_cos_slope)
+print("Androstenedione maximum time of normative model")
+print(max_time_normative_androstenedione_ln_model_sin_cos_slope)
+print("Androstenedione amplitude of exponent of chronocort patients model (height of peak to mesor)")
+print("The model used the ln values with sine and cosine terms with a random intercept and random slope")
+(max(fixed_effects_frame$chronocort_patient_androstenedione_exp_ln_model_sin_cos_slope) -
+  min(fixed_effects_frame$chronocort_patient_androstenedione_exp_ln_model_sin_cos_slope))/2
+print("Androstenedione minimum time of chronocort patient model")
+print(min_time_chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+print("Androstenedione maximum time of chronocort patient model")
+print(max_time_chronocort_patient_androstenedione_ln_model_sin_cos_slope)
+print("Androstenedione amplitude of exponent of standard therapy patients model (height of peak to mesor)")
+print("The model used the ln values with sine and cosine terms with a random intercept and random slope")
+(max(fixed_effects_frame$standard_patient_androstenedione_exp_ln_model_sin_cos_slope) -
+  min(fixed_effects_frame$standard_patient_androstenedione_exp_ln_model_sin_cos_slope))/2
+print("Androstenedione minimum time of standard therapy patient model")
+print(min_time_standard_patient_androstenedione_ln_model_sin_cos_slope)
+print("Androstenedione maximum time of standard therapy patient model")
+print(max_time_standard_patient_androstenedione_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, print all anova model comparison likelihood ratio tests}
+sink("likelihood ratio tests of cosinor models.txt")
+
+anova(chronocort_patient_17OHP_ln_model_null_slope, 
+      chronocort_patient_17OHP_ln_model_sin_cos_slope)
+sink()
+```
+
+```{r, print all the cosinor modelling outputs}
+
+sink("cosinor_modelling_outputs/Results of peaks and trough of cosinor models.txt")
+print("Number is hours past midnight - 17OHP models")
+print("Standard Patients minimum:")
+min_time_standard_patient_17OHP_ln_model_sin_cos_slope +13
+print("Standard Patients maximum:")
+max_time_standard_patient_17OHP_ln_model_sin_cos_slope +13 -24
+
+print("Chronocort minimum:")
+min_time_chronocort_patient_17OHP_ln_model_sin_cos_slope +13
+print("Chronocort maximum:")
+max_time_chronocort_patient_17OHP_ln_model_sin_cos_slope +13 -24
+
+print("Healthy minimum:")
+min_time_normative_17OHP_ln_model_sin_cos_slope +13
+print("Healthy maximum:")
+max_time_normative_17OHP_ln_model_sin_cos_slope +13 - 24 
+
+print("Number is hours past midnight - Androstenedione models")
+print("Standard Patients minimum:")
+min_time_standard_patient_androstenedione_ln_model_sin_cos_slope +13
+print("Standard Patients maximum:")
+max_time_standard_patient_androstenedione_ln_model_sin_cos_slope +13 -24
+
+print("Chronocort minimum:")
+min_time_chronocort_patient_androstenedione_ln_model_sin_cos_slope +13
+print("Chronocort maximum:")
+max_time_chronocort_patient_androstenedione_ln_model_sin_cos_slope +13 -24
+
+print("Healthy minimum:")
+min_time_normative_androstenedione_ln_model_sin_cos_slope +13
+print("Healthy maximum:")
+max_time_normative_androstenedione_ln_model_sin_cos_slope +13 - 24 
+sink()
+
+```
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_13")
+```

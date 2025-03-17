@@ -1,0 +1,244 @@
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("giant_spline_curve_frame_Androstenedione",
+                                   "giant_spline_curve_frame_17OHP"
+                                   ))
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_data",
+                                   "giant_normative_spline_curve_frame_Androstenedione",
+                                   "giant_normative_spline_curve_frame_17OHP"
+                                   ))
+
+load_efmody_files_function(
+  previous_file_name="file_11",
+  parent_directory="efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("single_centre_saliva_data",
+                                   "single_centre_saliva_data_long",
+                                   "giant_salivary_spline_fit_frame_flexible_degrees_of_freedom"
+                                   ))
+```
+
+```{r, scale absolute markers to facilitate going on a similar axis}
+
+single_centre_patient_vector <- 
+  unique(single_centre_saliva_data$patient)
+
+single_centre_patient_paste_visit_vector <- 
+  unique(single_centre_saliva_data_long$patient_paste_visit)
+
+
+
+
+degrees_of_freedom_to_plot <- 10
+
+#take the efmody data out for single centre patients for 17OHP. Remember we don't want visit 2 because there is no saliva data for that visit
+giant_spline_curve_frame_17OHP_specific_df <- 
+  subset(giant_spline_curve_frame_17OHP, 
+         degrees_of_freedom==degrees_of_freedom_to_plot &
+         patient_paste_visit %in% single_centre_patient_paste_visit_vector
+         )
+
+#take the efmody data out for single centre patients for 17OHP
+giant_spline_curve_frame_Androstenedione_specific_df <- 
+  subset(giant_spline_curve_frame_Androstenedione, 
+         degrees_of_freedom==degrees_of_freedom_to_plot &
+         patient_paste_visit %in% single_centre_patient_paste_visit_vector
+         )
+
+
+
+#join in the original salivary data
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom <-
+  full_join(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom,
+               single_centre_saliva_data_long,
+               by=c("patient"="patient",
+                    "id"="id",
+                    "reading_number"="reading_number",
+                    "marker"="marker",
+                    "visit_number"="visit_number",
+                    "visit_name"="visit_name",
+                    "patient_paste_visit"="patient_paste_visit",
+                    "id_paste_visit"="id_paste_visit",
+                    "time_of_test_hours_past_first_measurement"="time_of_test_hours_past_first_measurement"))
+
+#take all the normative spline data for 17OHP
+giant_normative_spline_curve_frame_17OHP_specific_df <- 
+  subset(giant_normative_spline_curve_frame_17OHP, 
+         degrees_of_freedom==degrees_of_freedom_to_plot 
+         )
+```
+
+
+```{r, plot absolute serum 17ohp and androstenedione with each individual marker by patient}
+
+degrees_of_freedom_to_plot <- 10
+for (each_marker in unique(single_centre_saliva_data_long$marker)){
+for (each_patient_paste_visit in unique(single_centre_saliva_data_long$patient_paste_visit)){
+
+saliva_spline_data_to_plot <-
+  subset(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom,
+         marker==each_marker &
+         patient_paste_visit == each_patient_paste_visit )
+
+salive_point_data_to_plot <-
+  subset(single_centre_saliva_data_long,
+         marker==each_marker &
+         patient_paste_visit == each_patient_paste_visit
+         )
+
+serum_17OHP_data_to_plot <-
+  subset(giant_spline_curve_frame_17OHP,
+         patient_paste_visit == each_patient_paste_visit &
+         degrees_of_freedom == degrees_of_freedom_to_plot)
+
+serum_Androstenedione_data_to_plot <-
+  subset(giant_spline_curve_frame_Androstenedione,
+         patient_paste_visit == each_patient_paste_visit &
+         degrees_of_freedom == degrees_of_freedom_to_plot)
+
+sex_of_patient <-
+  saliva_spline_data_to_plot$Sex[1]
+
+number_of_imputed_points <-
+  sum(salive_point_data_to_plot$imputed_flag)
+
+#create the plot we want of individual visits from efmody overlaid on normative data from all normative patients
+absolute_spline_individual_saliva_plot <- 
+  ggplot(data=saliva_spline_data_to_plot) +
+#put in lines at 7am and 7pm
+  geom_vline(xintercept=2,  
+             colour="azure3",
+             linewidth=0.2,
+             alpha=0.3) +
+  geom_vline(xintercept=8,  
+             colour="azure3",
+             linewidth=0.2, 
+             alpha=0.3) +
+  #plot our spline readings of 17OHP markers
+  geom_point(data=serum_17OHP_data_to_plot, 
+             aes(x=time_of_test_hours_past_first_measurement_17OHP, 
+                 y=non_negative_y_17OHP_times_10),
+             colour="purple",
+             alpha=0.1,
+             shape="circle",
+             size=0.1) +
+  #plot our spline readings of Androstenedione markers
+  geom_point(data=serum_Androstenedione_data_to_plot, 
+             aes(x=time_of_test_hours_past_first_measurement_Androstenedione, 
+                 y=non_negative_y_Androstenedione_times_100),
+             colour="orange",
+             alpha=0.1,
+             shape="circle",
+             size=0.1) +
+  #plot our spline readings of salivary markers
+  geom_point(data=saliva_spline_data_to_plot, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=non_negative_y),
+             colour="black",
+             alpha=0.3,
+             shape="circle",
+             size=0.5) +
+  #plot our original data points of salivary markers
+  geom_point(data=salive_point_data_to_plot, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=AVAL),
+             colour="black",
+             alpha=1,
+             shape="cross",
+             size=2) +
+  #plot our original data points of salivary markers again only as a white plus
+  geom_point(data=salive_point_data_to_plot, 
+             aes(x=time_of_test_hours_past_first_measurement, 
+                 y=AVAL),
+             colour="white",
+             alpha=1,
+             shape="plus",
+             size=1) +
+  labs(y="Absolute marker (pmol/l)",
+       x="Reading number",
+       title=paste0("Absolute Spline Curves By Patient with ", 
+                    number_of_imputed_points, 
+                    " imputed points and Degrees of Freedom ", 
+                    "flexible_degrees_of_freedom"),
+       subtitle=paste0("Purple = serum 17OHP, Orange = serum Androstenedione, Black = Salivary ", each_marker)
+       ) +
+  theme(panel.background = element_rect(fill="white",colour="white"), 
+                               legend.position = "none",
+                               panel.grid.major = element_blank() ,
+                               axis.line.x.bottom = element_line(colour="black") ,
+                               axis.line.y.left = element_line(colour="black") ,
+                               #plot.title = element_text(size=12, hjust=0.5),
+                               plot.title = element_text(size=9, hjust=0.5),
+                               plot.subtitle = element_text(size=9, hjust=0.5),
+                               axis.text.x=element_blank(),
+                               axis.text.y=element_text(size=12),
+                               axis.title.y=element_text(size=14, face="bold"),
+                               axis.title.x=element_blank(),
+                               #change stuff for facet labels
+                               strip.background =element_rect(fill="black", colour="black"),
+                               strip.text = element_text(colour = 'white', size=12))
+
+absolute_spline_individual_saliva_plot
+
+#save within a hierarchy of sex and marker
+dir.create("salivary_spline_plots_absolute_flexible_degrees_of_freedom")
+dir.create("salivary_spline_plots_absolute_flexible_degrees_of_freedom/individual_plots")
+dir.create(paste0("salivary_spline_plots_absolute_flexible_degrees_of_freedom/individual_plots/", 
+                  sex_of_patient))
+dir.create(paste0("salivary_spline_plots_absolute_flexible_degrees_of_freedom/individual_plots/", 
+                  sex_of_patient, 
+                  "/degrees_of_freedom_", 
+                  "flexible_degrees_of_freedom"))
+dir.create(paste0("salivary_spline_plots_absolute_flexible_degrees_of_freedom/individual_plots/", 
+                  sex_of_patient, 
+                  "/degrees_of_freedom_", 
+                  "flexible_degrees_of_freedom", 
+                  "/", 
+                  each_marker))
+ggsave(filename=paste0("absolute_saliva_plot_", 
+                       each_marker, 
+                       "_", 
+                       each_patient_paste_visit, 
+                       ".tif"), 
+       path=paste0("salivary_spline_plots_absolute_flexible_degrees_of_freedom/individual_plots/", 
+                   sex_of_patient, 
+                   "/degrees_of_freedom_",
+                   "flexible_degrees_of_freedom", "/", each_marker),
+       plot = absolute_spline_individual_saliva_plot, 
+       device="tiff",  
+       width=10, height=5, 
+       compression = "lzw", limitsize=F)
+
+}
+print("finished rendering marker =")
+print(each_marker)
+}
+print("finished rendering degrees of freedom =")
+print("flexible_degrees_of_freedom")
+```
+
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+rm(giant_spline_difference_frame)
+rm(giant_spline_curve_frame_Androstenedione)
+rm(giant_spline_curve_frame_17OHP)
+rm(normative_data)
+rm(giant_normative_spline_curve_frame_Androstenedione)
+rm(giant_normative_spline_curve_frame_17OHP)
+
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_12")
+```

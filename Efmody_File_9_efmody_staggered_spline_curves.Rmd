@@ -1,0 +1,714 @@
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_2",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("giant_spline_curve_frame_17OHP",
+                                   "giant_spline_curve_frame_Androstenedione",
+                                   "giant_spline_difference_frame",
+                                   "all_patient_spline_fits_both_markers"
+                                   ))
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_data",
+                                   "giant_normative_spline_curve_frame_Androstenedione",
+                                   "giant_normative_spline_curve_frame_17OHP"
+                                   ))
+
+```
+
+chronocort_arm 
+
+long plot staggered instead of faceted to allow for overlap of profiles
+
+```{r, chronocort_arm absolute 17OHP and ten times androstenedione faceted by patient and arm visits faceted with original points}
+
+#get the area under the curve from all_patient_spline_fits_both_markers
+all_patient_spline_fits_df10_chronocort_arm <- 
+  subset(all_patient_spline_fits_both_markers, 
+         degrees_of_freedom==10 &
+         arm=="Chronocort"
+         )
+
+
+#extract normative profile numbers for just androstenedione
+normative_data_17OHP <- subset(
+  normative_data, 
+  marker=="normative_17OHP" 
+)
+
+#get the curves themself from a giant frame
+spline_curve_frame_17OHP_df10 <- 
+  subset(giant_spline_curve_frame_17OHP, degrees_of_freedom==10)
+spline_curve_frame_Androstenedione_df10 <- 
+  subset(giant_spline_curve_frame_Androstenedione, degrees_of_freedom==10)
+
+#we want the total area under the curve ranked by total area under the curve for 17OHP
+auc_17OHP_rankings_calculation_frame <-
+  all_patient_spline_fits_df10_chronocort_arm %>%
+  group_by(id) %>%
+  dplyr::summarise(
+    total_area_under_curve_17OHP_across_all_visits = sum(area_under_curve_17OHP)
+  )
+
+auc_17OHP_rankings_calculation_frame <- 
+  auc_17OHP_rankings_calculation_frame[order(
+    auc_17OHP_rankings_calculation_frame$total_area_under_curve_17OHP_across_all_visits),]
+auc_17OHP_rankings_calculation_frame$auc_ranking_17OHP <-
+  seq(1:nrow(auc_17OHP_rankings_calculation_frame))
+
+
+#we want the total area under the curve ranked by total area under the curve for androstenedione as well in case this one plots better
+auc_Androstenedione_rankings_calculation_frame <-
+  all_patient_spline_fits_df10_chronocort_arm %>%
+  group_by(id) %>%
+  dplyr::summarise(
+    total_area_under_curve_Androstenedione_across_all_visits = sum(area_under_curve_Androstenedione)
+  )
+
+auc_Androstenedione_rankings_calculation_frame <- 
+  auc_Androstenedione_rankings_calculation_frame[order(
+    auc_Androstenedione_rankings_calculation_frame$total_area_under_curve_Androstenedione_across_all_visits),]
+auc_Androstenedione_rankings_calculation_frame$auc_ranking_Androstenedione <-
+  seq(1:nrow(auc_Androstenedione_rankings_calculation_frame))
+
+#we join the rankings calculations
+auc_total_rankings_across_all_visits <-
+  left_join(
+    auc_17OHP_rankings_calculation_frame,
+    auc_Androstenedione_rankings_calculation_frame,
+    by = join_by(id)
+  )
+
+#then we join the rankings into a spline frame so that we have a ranking to stagger readings by
+spline_curve_frame_17OHP_df10_with_rankings <-
+  left_join(spline_curve_frame_17OHP_df10,
+            auc_total_rankings_across_all_visits,
+            by = join_by(id))
+spline_curve_frame_Androstenedione_df10_with_rankings <-
+  left_join(spline_curve_frame_Androstenedione_df10,
+            auc_total_rankings_across_all_visits,
+            by = join_by(id))
+spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione * 10
+
+#extract normative profile numbers for just androstenedione
+normative_data_Androstenedione <- subset(
+  normative_data, 
+  marker=="normative_Androstenedione" 
+)
+
+#extract normative profile numbers for just 17OHP
+normative_data_17OHP <- subset(
+  normative_data, 
+  marker=="normative_17OHP" 
+)
+
+#then we round to 2 decimal places the time of the measurement, to ensure the joins work okay with the spline models - this is not necessary for normative data as it is all whole number reading numbers
+normative_data_17OHP$reading_number <-
+  round(as.numeric(normative_data_17OHP$reading_number), digits=2)
+
+#create value_nM times 10 to plot androstenedione times 10
+normative_data_Androstenedione$value_nM_times_10 <-
+  normative_data_Androstenedione$value_nM * 10
+
+#then we round to 2 decimal places the time of the measurement, to ensure the joins work okay with the spline models
+normative_data_Androstenedione$reading_number <-
+  round(as.numeric(normative_data_Androstenedione$reading_number), 
+        digits=2)
+
+#then we stagger our readings by a stagger factor, and the ranking
+stagger_factor_first <- 80
+stagger_factor_second <- 30
+patient_after_which_to_double_stagger <- 40
+
+#add a stagger to facilitate a staggered plot
+spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered <-
+  spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP +
+  spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+
+spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10 +
+  #note here we are staggering according to teh 17OHP ranking, to keep all the staggers proportionate according to a consistent ranking
+  spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+
+#introduce our second stagger for patients ranked beyond our threshold
+spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP > 
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered +
+  (spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered)
+
+spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP >
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered +
+  #note here we are staggering according to teh 17OHP ranking, to keep all the staggers proportionate according to a consistent ranking
+  (spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered)
+
+#create an x axis to draw as horizontal lines to focus each profile
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered <-
+  spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP > 
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered +
+  (spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered)
+
+#add 20, 50 and 100 to be able to draw points at 25, 50 and 100
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered_plus_20 <-
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered+20
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered_plus_50 <-
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered+50
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered_plus_100 <-
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered+100
+
+#create an x axis in the androstenedione frame in exactly the same way
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP > 
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered +
+  (spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered)
+
+#add 20 50 and 100 to be able to draw points at 25 50 and 100
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered_plus_20 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered+20
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered_plus_50 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered+50
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered_plus_100 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered+100
+
+#create a visit number column for clearer faceting
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==1,
+         "Visit 1",
+         NA)
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==2,
+         "Visit 2",
+         spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number)
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==3,
+         "Visit 3",
+         spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number)
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==4,
+         "Visit 4",
+         spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number)
+
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==1,
+         "Visit 1",
+         NA)
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==2,
+         "Visit 2",
+         spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number)
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==3,
+         "Visit 3",
+         spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number)
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==4,
+         "Visit 4",
+         spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number)
+
+#then we plot with our staggered reading, instead of our absolute reading
+absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_chronocort_arm <- 
+  ggplot(data=spline_curve_frame_17OHP_df10_with_rankings) +
+  #plot our spline readings of 17OHP
+  geom_point(aes(x=time_of_test_hours_past_first_measurement_17OHP, 
+                 y=non_negative_y_17OHP_staggered),
+             colour="purple",
+             shape="circle",
+             alpha=0.3,
+             size=0.1) +
+  #plot our spline readings of Androstenedione
+  geom_point(data=spline_curve_frame_Androstenedione_df10_with_rankings, 
+             aes(x=time_of_test_hours_past_first_measurement_Androstenedione, 
+                 y=non_negative_y_Androstenedione_x10_staggered),
+             colour="orange",
+             alpha=0.3,
+             shape="circle",
+             size=0.1) +
+  #put in our x axis that we've hacked 
+  geom_hline(aes(yintercept=x_axis_staggered), alpha=0.5) +
+  #put in a y axis on the left
+  geom_vline(xintercept=0, alpha=0.5) +
+  #put in a y axis on the right
+  geom_vline(xintercept=24, alpha=0.5) +
+  #put in a small tick on the y axis manually on the left
+  geom_segment(aes(x = 0, 
+                   y = x_axis_staggered_plus_20, 
+                   xend = 0.2, 
+                   yend = x_axis_staggered_plus_20), 
+               colour="black",
+               linewidth=0.5) +
+  geom_segment(aes(x = 0, 
+                   y = x_axis_staggered_plus_50, 
+                   xend = 0.2, 
+                   yend = x_axis_staggered_plus_50), 
+               colour="black",
+               linewidth=0.5) +
+  #put in a small tick on the y axis manually on the right
+  geom_segment(aes(x = 24, 
+                   y = x_axis_staggered_plus_20, 
+                   xend = 23.8, 
+                   yend = x_axis_staggered_plus_20), 
+               colour="black",
+               linewidth=0.5) +
+  geom_segment(aes(x = 24, 
+                   y = x_axis_staggered_plus_50, 
+                   xend = 23.8, 
+                   yend = x_axis_staggered_plus_50), 
+               colour="black",
+               linewidth=0.5) +
+  #put in the number for 50 and 100 on the left
+  geom_text(aes(y=x_axis_staggered_plus_20), 
+           label="20",
+           x=0.3,
+           hjust=0,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  geom_text(aes(y=x_axis_staggered_plus_50), 
+           label="50",
+           x=0.3,
+           hjust=0,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  geom_text(aes(y=x_axis_staggered_plus_20), 
+           label="2",
+           x=23.7,
+           hjust=1,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  geom_text(aes(y=x_axis_staggered_plus_50), 
+           label="5",
+           x=23.7,
+           hjust=1,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  facet_wrap(~visit_facet_number, ncol=4) +
+  labs(y="Absolute 17OHP (nmol/l) / Androstenedione x10 (nmol/l)",
+       x="Hours past first measurement",
+       title=paste0("Absolute Spline Curves By Patient"),
+       subtitle=paste0("17OHP blue, Androstenedione x10 red")
+       ) +
+  theme(panel.background = element_rect(fill="white",colour="azure2"), legend.position = "none",
+                               panel.grid.major = element_line(colour="azure2") ,
+                               axis.line.x.bottom = element_blank() ,
+                               axis.line.y.left = element_blank() ,
+                               plot.title = element_blank(),
+                               plot.subtitle = element_blank(),
+                               axis.text.x=element_blank(),
+                               axis.text.y=element_blank(),
+                               axis.title.y=element_blank(),
+                               axis.title.x=element_blank())
+dir.create("staggered_spline_curve_plots")
+ggsave(filename=paste0("absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_chronocort_arm_by_", stagger_factor_first, "_then_", stagger_factor_second, 
+                       ".tif"), 
+       path=paste0("staggered_spline_curve_plots"),
+       plot = absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_chronocort_arm, 
+       device="tiff",  
+       width=10, height=50, 
+       compression = "lzw", limitsize=F)
+```
+
+standard_therapy_arm 
+
+long plot staggered instead of faceted to allow for overlap of profiles
+
+```{r, standard_therapy_arm absolute 17OHP and ten times androstenedione faceted by patient and arm visits faceted with original points}
+
+#get the area under the curve from all_patient_spline_fits_both_markers
+all_patient_spline_fits_df10_standard_therapy_arm <- 
+  subset(all_patient_spline_fits_both_markers, 
+         degrees_of_freedom==10 &
+         arm=="Standard GC therapy"
+         )
+
+
+#extract normative profile numbers for just androstenedione
+normative_data_17OHP <- subset(
+  normative_data, 
+  marker=="normative_17OHP" 
+)
+
+#get the curves themself from a giant frame
+spline_curve_frame_17OHP_df10 <- 
+  subset(giant_spline_curve_frame_17OHP, degrees_of_freedom==10)
+spline_curve_frame_Androstenedione_df10 <- 
+  subset(giant_spline_curve_frame_Androstenedione, degrees_of_freedom==10)
+
+#we want the total area under the curve ranked by total area under the curve for 17OHP
+auc_17OHP_rankings_calculation_frame <-
+  all_patient_spline_fits_df10_standard_therapy_arm %>%
+  group_by(id) %>%
+  dplyr::summarise(
+    total_area_under_curve_17OHP_across_all_visits = sum(area_under_curve_17OHP)
+  )
+
+auc_17OHP_rankings_calculation_frame <- 
+  auc_17OHP_rankings_calculation_frame[order(
+    auc_17OHP_rankings_calculation_frame$total_area_under_curve_17OHP_across_all_visits),]
+auc_17OHP_rankings_calculation_frame$auc_ranking_17OHP <-
+  seq(1:nrow(auc_17OHP_rankings_calculation_frame))
+
+
+auc_Androstenedione_rankings_calculation_frame <-
+  all_patient_spline_fits_df10_standard_therapy_arm %>%
+  group_by(id) %>%
+  dplyr::summarise(
+    total_area_under_curve_Androstenedione_across_all_visits = sum(area_under_curve_Androstenedione)
+  )
+
+auc_Androstenedione_rankings_calculation_frame <- 
+  auc_Androstenedione_rankings_calculation_frame[order(
+    auc_Androstenedione_rankings_calculation_frame$total_area_under_curve_Androstenedione_across_all_visits),]
+auc_Androstenedione_rankings_calculation_frame$auc_ranking_Androstenedione <-
+  seq(1:nrow(auc_Androstenedione_rankings_calculation_frame))
+
+#we join the rankings calculations
+auc_total_rankings_across_all_visits <-
+  left_join(
+    auc_17OHP_rankings_calculation_frame,
+    auc_Androstenedione_rankings_calculation_frame,
+    by = join_by(id)
+  )
+
+#then we join the rankings into a spline frame so that we have a ranking to stagger readings by
+spline_curve_frame_17OHP_df10_with_rankings <-
+  left_join(spline_curve_frame_17OHP_df10,
+            auc_total_rankings_across_all_visits,
+            by = join_by(id))
+spline_curve_frame_Androstenedione_df10_with_rankings <-
+  left_join(spline_curve_frame_Androstenedione_df10,
+            auc_total_rankings_across_all_visits,
+            by = join_by(id))
+spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione * 10
+
+#extract normative profile numbers for just androstenedione
+normative_data_Androstenedione <- subset(
+  normative_data, 
+  marker=="normative_Androstenedione" 
+)
+
+#extract normative profile numbers for just 17OHP
+normative_data_17OHP <- subset(
+  normative_data, 
+  marker=="normative_17OHP" 
+)
+
+normative_data_17OHP$reading_number <-
+  round(as.numeric(normative_data_17OHP$reading_number), digits=2)
+
+#create value_nM times 10 to plot androstenedione times 10
+normative_data_Androstenedione$value_nM_times_10 <-
+  normative_data_Androstenedione$value_nM * 10
+normative_data_Androstenedione$reading_number <-
+  round(as.numeric(normative_data_Androstenedione$reading_number), 
+        digits=2)
+
+#then we stagger our readings by a stagger factor, and the ranking
+stagger_factor_first <- 80
+stagger_factor_second <- 30
+patient_after_which_to_double_stagger <- 40
+
+#add a stagger to facilitate a staggered plot
+spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered <-
+  spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP +
+  spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+
+spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10 +
+  #note here we are staggering according to teh 17OHP ranking, to keep all the staggers proportionate according to a consistent ranking
+  spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+
+#introduce another stagger for patients ranked beyond our threshold
+spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP > 
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered +
+  (spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_17OHP_df10_with_rankings$non_negative_y_17OHP_staggered)
+
+spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP >
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered +
+  #note here we are staggering according to teh 17OHP ranking, to keep all the staggers proportionate according to a consistent ranking
+  (spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_Androstenedione_df10_with_rankings$non_negative_y_Androstenedione_x10_staggered)
+
+#create an x axis hack to draw as horizontal lines to focus each profile
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered <-
+  spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP > 
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered +
+  (spline_curve_frame_17OHP_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered)
+#add 25 50 and 100 to be able to draw points at 50 and 100
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered_plus_20 <-
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered+20
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered_plus_50 <-
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered+50
+spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered_plus_100 <-
+  spline_curve_frame_17OHP_df10_with_rankings$x_axis_staggered+100
+#create an x axis hack in the androstenedione frame in exactly the same way
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP * 
+  stagger_factor_first
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP > 
+           patient_after_which_to_double_stagger,
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered +
+  (spline_curve_frame_Androstenedione_df10_with_rankings$auc_ranking_17OHP - 
+     patient_after_which_to_double_stagger) * 
+    stagger_factor_second,
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered)
+#add 50 and 100 to be able to draw points at 50 and 100
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered_plus_20 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered+20
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered_plus_50 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered+50
+spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered_plus_50 <-
+  spline_curve_frame_Androstenedione_df10_with_rankings$x_axis_staggered+100
+
+#create a visit number column for clearer faceting
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==1,
+         "Visit 1",
+         NA)
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==2,
+         "Visit 2",
+         spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number)
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==3,
+         "Visit 3",
+         spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number)
+spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_17OHP_df10_with_rankings$visit_number==4,
+         "Visit 4",
+         spline_curve_frame_17OHP_df10_with_rankings$visit_facet_number)
+
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==1,
+         "Visit 1",
+         NA)
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==2,
+         "Visit 2",
+         spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number)
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==3,
+         "Visit 3",
+         spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number)
+spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number <-
+  ifelse(spline_curve_frame_Androstenedione_df10_with_rankings$visit_number==4,
+         "Visit 4",
+         spline_curve_frame_Androstenedione_df10_with_rankings$visit_facet_number)
+
+#then we plot with our staggered reading, instead of our absolute reading
+absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_standard_therapy_arm <- 
+  ggplot(data=spline_curve_frame_17OHP_df10_with_rankings) +
+  #plot our spline readings of 17OHP
+  geom_point(aes(x=time_of_test_hours_past_first_measurement_17OHP, 
+                 y=non_negative_y_17OHP_staggered),
+             colour="purple",
+             shape="circle",
+             alpha=0.3,
+             size=0.1) +
+  #plot our spline readings of Androstenedione
+  geom_point(data=spline_curve_frame_Androstenedione_df10_with_rankings, 
+             aes(x=time_of_test_hours_past_first_measurement_Androstenedione, 
+                 y=non_negative_y_Androstenedione_x10_staggered),
+             colour="orange",
+             alpha=0.3,
+             shape="circle",
+             size=0.1) +
+  #put in our x axis that we've hacked 
+  geom_hline(aes(yintercept=x_axis_staggered), alpha=0.5) +
+  #put in a y axis on the left
+  geom_vline(xintercept=0, alpha=0.5) +
+  #put in a y axis on the right
+  geom_vline(xintercept=24, alpha=0.5) +
+  #put in a small tick on the y axis manually on the left
+  geom_segment(aes(x = 0, 
+                   y = x_axis_staggered_plus_20, 
+                   xend = 0.2, 
+                   yend = x_axis_staggered_plus_20), 
+               colour="black",
+               linewidth=0.5) +
+  geom_segment(aes(x = 0, 
+                   y = x_axis_staggered_plus_50, 
+                   xend = 0.2, 
+                   yend = x_axis_staggered_plus_50), 
+               colour="black",
+               linewidth=0.5) +
+  geom_segment(aes(x = 24, 
+                   y = x_axis_staggered_plus_20, 
+                   xend = 23.8, 
+                   yend = x_axis_staggered_plus_20), 
+               colour="black",
+               linewidth=0.5) +
+  geom_segment(aes(x = 24, 
+                   y = x_axis_staggered_plus_50, 
+                   xend = 23.8, 
+                   yend = x_axis_staggered_plus_50), 
+               colour="black",
+               linewidth=0.5) +
+  geom_text(aes(y=x_axis_staggered_plus_20), 
+           label="20",
+           x=0.3,
+           hjust=0,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  geom_text(aes(y=x_axis_staggered_plus_50), 
+           label="50",
+           x=0.3,
+           hjust=0,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  geom_text(aes(y=x_axis_staggered_plus_20), 
+           label="2",
+           x=23.7,
+           hjust=1,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  geom_text(aes(y=x_axis_staggered_plus_50), 
+           label="5",
+           x=23.7,
+           hjust=1,
+           vjust="center",
+           color="black",
+           alpha=0.1,
+           size=1.2#, 
+           #fontface="bold"
+           ) +  
+  facet_wrap(~visit_facet_number, ncol=4) +
+  labs(y="Absolute 17OHP (nmol/l) / Androstenedione x10 (nmol/l)",
+       x="Hours past first measurement",
+       title=paste0("Absolute Spline Curves By Patient"),
+       subtitle=paste0("17OHP blue, Androstenedione x10 red")
+       ) +
+#  coord_cartesian(ylim=c(0, 300)) +
+  theme(panel.background = element_rect(fill="white",colour="azure2"), legend.position = "none",
+                               panel.grid.major = element_line(colour="azure2") ,
+                               axis.line.x.bottom = element_blank() ,
+                               axis.line.y.left = element_blank() ,
+                               plot.title = element_blank(),
+                               plot.subtitle = element_blank(),
+                               axis.text.x=element_blank(),
+                               axis.text.y=element_blank(),
+                               axis.title.y=element_blank(),
+                               axis.title.x=element_blank())
+#absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_standard_therapy_arm
+dir.create("staggered_spline_curve_plots")
+ggsave(filename=paste0("absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_standard_therapy_arm_by_", stagger_factor_first, "_then_", stagger_factor_second,
+                       ".tif"), 
+       path=paste0("staggered_spline_curve_plots"),
+       plot = absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_standard_therapy_arm, 
+       device="tiff",  
+       width=10, height=50, 
+       compression = "lzw", limitsize=F)
+```
+
+```{r, place plots into a grid}
+staggered_grid_plot <-
+  grid.arrange(absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_chronocort_arm,
+             absolute_spline_17OHP_with_10xAndrostenedione_plot_staggered_standard_therapy_arm,
+             ncol=2)
+dir.create("staggered_spline_curve_plots")
+ggsave(filename=paste0("staggered_grid_plot_by_", stagger_factor_first, "_then_", stagger_factor_second,
+                       ".tif"), 
+       path=paste0("staggered_spline_curve_plots"),
+       plot = staggered_grid_plot, 
+       device="tiff",  
+       width=20, height=25, 
+       compression = "lzw", limitsize=F)
+```
+
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+rm(normative_data)
+rm(spline_summary_stats_total_by_degrees)
+rm(giant_spline_difference_frame)
+rm(giant_spline_curve_frame_17OHP)
+rm(giant_spline_curve_frame_Androstenedione)
+rm(normative_data_17OHP)
+rm(normative_data_Androstenedione)
+rm(normative_all_patient_spline_fits_both_markers)
+rm(giant_normative_spline_curve_frame_Androstenedione)
+rm(giant_normative_spline_curve_frame_17OHP)
+rm(normative_data_Androstenedione)
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_9")
+```

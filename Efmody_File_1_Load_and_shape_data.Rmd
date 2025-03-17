@@ -1,0 +1,3340 @@
+clear environment and load packages
+
+```{r, packages}
+rm(list = ls())
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+load_efmody_libraries_and_sources_function()
+```
+
+```{r, load in all data from ADAM files from excel}
+list_of_excel_tabs <- 
+  as.list(readxl::excel_sheets(path="./efmody_data_files_to_load/DIUR-005 ADAM files.xlsx"))
+#the excel tabs have loads of trailing spaces so convert the names to something more manageable
+list_of_excel_tabs_with_no_spaces <- 
+  as.list(NULL)
+for (i in 1:length(list_of_excel_tabs)){
+  item <- list_of_excel_tabs[i]
+  #remove the space from the tabs, because they have trailing spaces
+  item_no_space <- gsub(x=item, pattern=" *", replacement="")
+  list_of_excel_tabs_with_no_spaces[i] <- item_no_space
+}
+#I've manually turned the excel file into csv files because of errors thrown when trying to load them in R
+list_of_csv_file_names <- 
+  as.list(list.files("./efmody_data_files_to_load/DIUR-005 ADAM files as CSV/"))
+
+for (i in list_of_csv_file_names){
+  #take each csv file in turn
+  file_to_read <- 
+    paste0("./efmody_data_files_to_load/DIUR-005 ADAM files as CSV/", i)
+  #read the csv file
+  file_read <- read.csv(file_to_read)
+  #make a name for a file that doesn't contain the csv at the end - so this name will be the same as the name of the tab in the excel file
+  name_of_file <- gsub(x=i, pattern=".csv", replacement="")
+  #assign the name without csv into the global environment, giving it the data within the tab
+  assign(x=name_of_file, #x is the new variable 
+       value=file_read, #value is the original variable 
+       env=.GlobalEnv)
+  
+}  
+```
+
+```{r, show ADCM - different medications listed outside of glucocorticoids including fludrocortisone}
+#create a standard column of fludrocortisone doses to account for some being in mg and some being in micrograms
+fludrocortisone_entries <- subset(ADCM, CMDECOD=="Fludrocortisone")
+
+fludrocortisone_entries$visit_1_fludro <-
+  ifelse(fludrocortisone_entries$CMDOSU=="mg",
+         fludrocortisone_entries$CMDOSTOT*1000,
+         fludrocortisone_entries$CMDOSTOT)
+write.csv(fludrocortisone_entries,
+          "fludrocortisone_entries.csv")
+
+fludrocortisone_entries_to_join <-
+  fludrocortisone_entries[,c("USUBJID",
+                             "visit_1_fludro")]
+descr(fludrocortisone_entries_to_join$visit_1_fludro)
+colnames(fludrocortisone_entries)
+
+#check who had a dose change by looking at frequencies
+fludrocortisone_entries_frequencies <-
+  subset(
+    rownames_to_column(
+      as.data.frame(
+        freq(fludrocortisone_entries$USUBJID))), 
+    rowname!="<NA>" & rowname!="Total"& Freq>1)
+
+patients_with_fludrocortisone_dose_change <- fludrocortisone_entries_frequencies$rowname
+  
+#make NA the ones with dose changes, and then fill them in manually. We make this frame unique to effectively make it wide
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  (ifelse(fludrocortisone_entries_to_join$USUBJID %in% patients_with_fludrocortisone_dose_change,
+         NA,
+         fludrocortisone_entries_to_join$visit_1_fludro))
+fludrocortisone_entries_to_join <-
+  unique(fludrocortisone_entries_to_join)
+
+#duplicate the column for four visits before we fill in the changes
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  fludrocortisone_entries_to_join$visit_3_fludro <-
+  fludrocortisone_entries_to_join$visit_2_fludro <-
+  fludrocortisone_entries_to_join$visit_1_fludro 
+
+#now manually insert our doses for DIUR-005/101/028
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/101/028",
+         "200",
+         fludrocortisone_entries_to_join$visit_1_fludro)
+fludrocortisone_entries_to_join$visit_2_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/101/028",
+         "200",
+         fludrocortisone_entries_to_join$visit_2_fludro)
+fludrocortisone_entries_to_join$visit_3_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/101/028",
+         "250",
+         fludrocortisone_entries_to_join$visit_3_fludro)
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/101/028",
+         "250",
+         fludrocortisone_entries_to_join$visit_4_fludro)
+
+#now manually insert our doses for DIUR-005/201/002
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/201/002",
+         "93.75",
+         fludrocortisone_entries_to_join$visit_1_fludro)
+fludrocortisone_entries_to_join$visit_2_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/201/002",
+         "125",
+         fludrocortisone_entries_to_join$visit_2_fludro)
+fludrocortisone_entries_to_join$visit_3_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/201/002",
+         "125",
+         fludrocortisone_entries_to_join$visit_3_fludro)
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/201/002",
+         "62.5",
+         fludrocortisone_entries_to_join$visit_4_fludro)
+
+#now manually insert our doses for DIUR-005/201/002
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/301/012",
+         "50",
+         fludrocortisone_entries_to_join$visit_1_fludro)
+fludrocortisone_entries_to_join$visit_2_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/301/012",
+         "100",
+         fludrocortisone_entries_to_join$visit_2_fludro)
+fludrocortisone_entries_to_join$visit_3_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/301/012",
+         "100",
+         fludrocortisone_entries_to_join$visit_3_fludro)
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/301/012",
+         "100",
+         fludrocortisone_entries_to_join$visit_4_fludro)
+
+#now manually insert our doses for DIUR-005/403/004 - there was a dose change, but it was before the first visit
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/403/004",
+         "200",
+         fludrocortisone_entries_to_join$visit_1_fludro)
+fludrocortisone_entries_to_join$visit_2_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/403/004",
+         "200",
+         fludrocortisone_entries_to_join$visit_2_fludro)
+fludrocortisone_entries_to_join$visit_3_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/403/004",
+         "200",
+         fludrocortisone_entries_to_join$visit_3_fludro)
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/403/004",
+         "200",
+         fludrocortisone_entries_to_join$visit_4_fludro)
+
+
+#now manually insert our doses for DIUR-005/501/006 - there was a dose change from 150 to 100 on day 32, this was on the first day of visit 2, so presumed they were on it for their profile that day
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/006",
+         "150",
+         fludrocortisone_entries_to_join$visit_1_fludro)
+fludrocortisone_entries_to_join$visit_2_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/006",
+         "100",
+         fludrocortisone_entries_to_join$visit_2_fludro)
+fludrocortisone_entries_to_join$visit_3_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/006",
+         "100",
+         fludrocortisone_entries_to_join$visit_3_fludro)
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/006",
+         "100",
+         fludrocortisone_entries_to_join$visit_4_fludro)
+
+#now manually insert our doses for DIUR-005/501/007 - there was a dose change from 400 to 200 on day 97 but it was changed back by the time of the next visit to 400, so all doses are 400 for the sake of profiles
+fludrocortisone_entries_to_join$visit_1_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/007",
+         "400",
+         fludrocortisone_entries_to_join$visit_1_fludro)
+fludrocortisone_entries_to_join$visit_2_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/007",
+         "400",
+         fludrocortisone_entries_to_join$visit_2_fludro)
+fludrocortisone_entries_to_join$visit_3_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/007",
+         "400",
+         fludrocortisone_entries_to_join$visit_3_fludro)
+fludrocortisone_entries_to_join$visit_4_fludro <-
+  ifelse(fludrocortisone_entries_to_join$USUBJID=="DIUR-005/501/007",
+         "400",
+         fludrocortisone_entries_to_join$visit_4_fludro)
+
+write.csv(fludrocortisone_entries_to_join, "fludrocortisone_entries_to_join.csv")
+```
+
+
+```{r, remove duplicated rows caused by adjacent value imputation}
+ADEFFAC$measured_and_imputed_times <- 
+  ifelse(ADEFFAC$DTYPE=="AVERAGE" | ADEFFAC$DTYPE=="ADJVAL",
+         paste0(ADEFFAC$ATPT, ":00"),
+         ADEFFAC$ATM)
+#remove " 24 hour" 
+ADEFFAC$measured_and_imputed_times <- 
+  gsub(x=ADEFFAC$measured_and_imputed_times,
+       pattern=" 24 Hour",
+       replacement="")
+```
+
+from our measured_and_imputed_times column, we can then separate out the times and hours 
+
+```{r, convert times to appropriate continuous variables}
+ADEFFAC$time_of_test_minute <- 
+  (sub(ADEFFAC$measured_and_imputed_times, pattern="..:", replacement=""))
+ADEFFAC$time_of_test_minute <- 
+  as.numeric(sub(ADEFFAC$time_of_test_minute, pattern=":..", replacement=""))
+ADEFFAC$time_of_test_hour <- 
+  as.numeric(gsub(ADEFFAC$measured_and_imputed_times, pattern=":.*", replacement=""))
+```
+
+to be nice and accurate for longitudinal modelling, we need the date of visit
+this comes from the ADSV frame, under the column SVSTDTC
+
+pull that out ready to join into our ADEFFAC frame
+
+```{r}
+study_date_frame <- 
+  ADSV[,c(
+  "USUBJID",
+  "AVISITN",
+  "SVSTDTC")]
+#create a study_date as appropriate POSIX
+study_date_frame$Study_Date <-
+  as.POSIXct(study_date_frame$SVSTDTC, format="%Y-%m-%d")
+```
+
+now we can add the study_date_frame to a new frame that has dates and profiling data
+
+```{r, add study dates into the profiles to create steroid_profiles}
+steroid_profiles <- 
+  dplyr::left_join(ADEFFAC, study_date_frame, by=c("USUBJID", "AVISITN"))
+#patient numbers contain slashes so create an id column and change those to underscores to prevent folder and coding issues
+steroid_profiles$id <- gsub(x=steroid_profiles$USUBJID, pattern="/", replacement="_")
+
+#create an id_visit column in the steroid profiles frame
+steroid_profiles$id_visit <-
+  paste0(steroid_profiles$id, "_", steroid_profiles$AVISITN)
+
+#create an id_paste_visit column in the steroid profiles frame also as I've used that name in different places
+steroid_profiles$id_paste_visit <-
+  paste0(steroid_profiles$id, "_", steroid_profiles$AVISITN)
+
+#create time number and time factor columns also
+steroid_profiles$time_factor <- as.factor(steroid_profiles$ATPTN)
+steroid_profiles$time_number <- as.numeric(steroid_profiles$ATPTN)
+```
+
+to best model a 24 hour trajectory, we don't want to use midnight as the arbitrary start point, because that's not the start of their profile. Instead, we need to use the first profile measure, which is according to the column ATM for time but then combined with the date, and convert it to an R friendly POSIXct format.
+
+```{r}
+#however, if the measurement is done after, let's say, the third measurement, and the time is before, let's say 16:00, then the measurement will be the day after the study date
+steroid_profiles$date_of_profile_measurement <- 
+  ifelse(steroid_profiles$time_of_test_hour < 16 &
+           steroid_profiles$ATPTN > 3, 
+         steroid_profiles$Study_Date + 1*60*60*24, # i.e. 1 day in seconds
+         steroid_profiles$Study_Date)
+
+#because we've used date_of_profile_measurement in an ifelse statement we need to convert back to posixct
+steroid_profiles$date_of_profile_measurement <- 
+  as.character(as.POSIXct(steroid_profiles$date_of_profile_measurement, origin="1970-01-01"))
+
+#first, the daylight savins causes an 11pm anomaly in the newly created column that we have to correct
+steroid_profiles$date_of_profile_measurement <- 
+  ifelse(steroid_profiles$date_of_profile_measurement == "2016-10-30 23:00:00", 
+         "2016-10-30", # this makes it purely a date column
+         steroid_profiles$date_of_profile_measurement)
+
+#now we have to correct for daylight savings. If the date was 2016-10-30, we have to add 25 hours, not 24
+steroid_profiles$date_of_profile_measurement <- 
+  ifelse(steroid_profiles$Study_Date == "2016-10-30" &
+         steroid_profiles$time_of_test_hour < 16 &
+           steroid_profiles$ATPTN > 3, 
+         "2016-10-31", # here we just manually insert the next day because it's only a one off case
+         steroid_profiles$date_of_profile_measurement)
+
+#that gives us a string with 00:00:00 at the end, so we need to get rid of that
+steroid_profiles$date_of_profile_measurement <- 
+  gsub(steroid_profiles$date_of_profile_measurement, pattern=" .*", replacement="")
+
+#then we have a date and time which we can paste together, and then convert to posixct, which gives us appropriate date and time
+steroid_profiles$date_and_time_of_profile_measurement <- 
+  as.POSIXct(paste0(steroid_profiles$date_of_profile_measurement, 
+                    " ", 
+                    steroid_profiles$time_of_test_hour, 
+                    ":", 
+                    steroid_profiles$time_of_test_minute
+                    ), 
+             format='%Y-%m-%d %H:%M')
+```
+
+We want the date and time of each first profile measurement to calculate time beyond this
+
+```{r}
+freq(steroid_profiles$ATPTN)
+first_profile_measurement_times <- 
+  subset(steroid_profiles, 
+         ATPTN==1 & 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)")
+
+first_profile_measurement_times <- 
+  first_profile_measurement_times[,c("USUBJID", "AVISITN", "date_and_time_of_profile_measurement")]
+
+names(first_profile_measurement_times)[names(first_profile_measurement_times) == 
+  "date_and_time_of_profile_measurement"] <- 
+  "date_and_time_of_first_profile_measurement_at_visit"
+
+#then we can join that information back in, and we will be able to calculate diff time in the same row for the time from the first profile measurement
+
+steroid_profiles_with_first_times <- 
+  dplyr::left_join(steroid_profiles, first_profile_measurement_times, by=c("USUBJID", "AVISITN"))
+
+steroid_profiles <- steroid_profiles_with_first_times
+```
+
+now for each marker measurement we can calculate the time beyond the first profile measurement at that visit, to give us a continuous time variable that can be appropriately modelled
+
+```{r}
+steroid_profiles$time_of_test_hours_past_first_measurement <-
+  as.numeric(difftime(steroid_profiles$date_and_time_of_profile_measurement,
+           steroid_profiles$date_and_time_of_first_profile_measurement_at_visit,
+           units="hours"))
+```
+
+Note that study AVISITN of zero is the screening visit. Then study visit 1 is the baseline visit
+we want a days beyond baseline visit column
+
+```{r}
+date_of_baseline_visits <- 
+  subset(study_date_frame, AVISITN==1)
+
+#filter out just the visits and patients
+date_of_baseline_visits <- 
+  date_of_baseline_visits[,c("USUBJID", 
+                             "Study_Date")]
+
+#change the name of the column so we know it is the baseline visit date
+date_of_baseline_visits <- 
+  date_of_baseline_visits %>% dplyr::rename("Baseline_Visit_Date" = "Study_Date")
+
+#join that frame into 
+steroid_profiles_with_baseline_visit_date <- 
+  left_join(steroid_profiles, date_of_baseline_visits, by=c("USUBJID"))
+steroid_profiles <- steroid_profiles_with_baseline_visit_date
+
+#now we can create the days beyond baseline visit
+steroid_profiles$days_beyond_baseline_visit <- 
+  as.numeric(difftime(
+    steroid_profiles$Study_Date ,
+    steroid_profiles$Baseline_Visit_Date, 
+    units="days"))
+```
+
+we want a list of patients to loop round, so we can have this in a frame that also contains which arm they are in 
+
+```{r}
+patient_details <- 
+  unique(steroid_profiles[,c("id", "ARM")] )
+```
+
+```{r, log trasform steroid values}
+steroid_profiles$ln_value_nM <- log(steroid_profiles$AVAL)
+```
+
+We want the PARAM to be 
+17-hydroxyprogesterone/ SI (nmol/L)
+Androstenedione/ SI (nmol/L)
+and then plot for all patients
+
+```{r, raw data plots}
+profiles_plot_17ohp <- ggplot() +
+  geom_point(data=subset(steroid_profiles, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)"), 
+             aes(x=time_of_test_hours_past_first_measurement, y=AVAL, colour=AVISIT), 
+             size=0.5, alpha=0.3) +
+  geom_line(data=subset(steroid_profiles, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)"), 
+            aes(x=time_of_test_hours_past_first_measurement, y=AVAL, colour=AVISIT),
+            size=0.5, alpha=0.3) +
+  facet_wrap(~USUBJID) +
+  coord_cartesian(ylim=c(0,100)) +
+  themepowerpoint
+
+profiles_plot_androstenedione <- ggplot() +
+  geom_point(data=subset(steroid_profiles, PARAM=="Androstenedione/ SI (nmol/L)"), 
+             aes(x=time_of_test_hours_past_first_measurement, y=AVAL, colour=AVISIT),
+             size=0.5, alpha=0.3) +
+  geom_line(data=subset(steroid_profiles, PARAM=="Androstenedione/ SI (nmol/L)"), 
+            aes(x=time_of_test_hours_past_first_measurement, y=AVAL, colour=AVISIT),
+            size=0.5, alpha=0.3) +
+  facet_wrap(~USUBJID) +
+  coord_cartesian(ylim=c(0,10)) +
+  themepowerpoint
+
+dir.create("efmody_profile_plots")
+ggsave(filename=paste("profiles_plot_17ohp.tif"), 
+       path="./efmody_profile_plots/", 
+       plot = profiles_plot_17ohp, 
+       device="tiff",  
+       width=30, height=30, 
+       compression = "lzw", limitsize=F)
+ggsave(filename=paste("profiles_plot_androstenedione.tif"), 
+       path="./efmody_profile_plots/", 
+       plot = profiles_plot_androstenedione, 
+       device="tiff",  
+       width=30, height=30, 
+       compression = "lzw", limitsize=F)
+```
+
+******************************************
+Joining patient parameters to the steroid profiles
+*****************************************
+
+```{r}
+patient_body_metrics_key <- unique(ADVS[,c(
+  "PARAMCD",
+  "PARAM"
+)])
+
+patient_body_metrics <- unique(ADVS[,c(
+  "USUBJID",
+  "PARAMCD",
+  "AVAL",
+  "AVISITN"
+)])
+
+#note we have one duplicate measurement that will create a list when we pivot if we don't get rid of it
+#patient DIUR-005/401/009 has two SYSBP1 at their AVISITN 99 that are 151 and 146. Remove the bigger one, and change the lower one to the mean of the two for purposes of simple blood pressure analysis and preventing many to one joins
+patient_body_metrics <- subset(patient_body_metrics, 
+                               USUBJID!="DIUR-005/401/009" | 
+                               PARAMCD!="SYSBP1" | 
+                               AVISITN!=99 |   
+                               AVAL!= 151)
+
+patient_body_metrics$AVAL <- ifelse(
+  patient_body_metrics$USUBJID=="DIUR-005/401/009" &
+    patient_body_metrics$PARAMCD=="SYSBP1" & 
+    patient_body_metrics$AVISITN==99 &
+    patient_body_metrics$AVAL== 146 ,
+  148.5,
+  patient_body_metrics$AVAL
+)
+
+#we have some columns that don't appear in every column, like the time. So if you spread with these columns, you will get too many rows. They need taking out, then adding in after the pivot wider:
+
+patient_body_metrics_extra_columns_after_pivoting_wide <- ADVS[,c(
+  "ATM",
+  "ARM",
+  "AGE"
+)]
+
+patient_body_metrics_wide <- 
+  pivot_wider(
+   patient_body_metrics, 
+   names_from = PARAMCD, 
+   values_from = "AVAL")
+
+patient_body_metrics_wide$id <- 
+  gsub(x=patient_body_metrics_wide$USUBJID, pattern="/", replacement="_")
+
+patient_body_metrics_wide$id_visit <-
+  paste0(patient_body_metrics_wide$id, "_", patient_body_metrics_wide$AVISITN)
+```
+
+now we have patient_body_metrics_wide, we can join that in to steroid_profiles
+
+```{r}
+steroid_profiles_with_body_metrics <- 
+  dplyr::left_join(steroid_profiles, 
+                   patient_body_metrics_wide, 
+                   by=c("id", "USUBJID", "id_visit", "AVISITN"))
+```
+
+
+```{r, reduce the name back to steroid_profiles}
+steroid_profiles <- 
+  steroid_profiles_with_body_metrics
+```
+
+
+****************************
+joining in steroid preparations
+*****************************
+
+Note that ADEX contains planned exposure and actual exposure
+
+we want to keep EXDOS1 EXDOS2 etc
+
+we want preparation1 preparation2 perhaps, if we have people on mixtures - too finite though, let's go for sticking to the bins, and have a total equivalent also. The patients on mixed dosing will always be a bit dodgy and difficult to summarise
+
+then we can create total hydrocortisone equivalent
+
+so the best way to do this is to convert all doses to hydrocortisone equivalent within ADEX
+so we use ifelse EXTRT is chronocort, hydrocort etc
+
+```{r, set equivalence ratios used in the original chronocort study}
+hydrocortisone_from_prednisolone_multiplier <- 5
+hydrocortisone_from_dexamethasone_multiplier <- 80
+```
+
+```{r, create hydrocortisone equivalent for the total dose}
+ADEX$hydrocortisone_equivalent <- 
+  ADEX$EXDOSE
+
+ADEX$hydrocortisone_equivalent <- ifelse(
+  ADEX$EXTRT=="Chronocort" |
+  ADEX$EXTRT=="Hydrocortisone" ,
+  ADEX$EXDOSE,
+  ADEX$hydrocortisone_equivalent
+)
+
+ADEX$hydrocortisone_equivalent <- ifelse(
+  ADEX$EXTRT=="Prednisolone" |
+  ADEX$EXTRT=="Prednisone" ,
+  ADEX$EXDOSE * hydrocortisone_from_prednisolone_multiplier,
+  ADEX$hydrocortisone_equivalent
+)
+
+ADEX$hydrocortisone_equivalent <- ifelse(
+  ADEX$EXTRT=="Dexamethasone",
+  ADEX$EXDOSE * hydrocortisone_from_dexamethasone_multiplier,
+  ADEX$hydrocortisone_equivalent
+)
+
+```
+
+```{r, create hydrocortisone equivalent within the initial dose frame - this is a frame read in as CSV at the beginning, where we only have total daily does before the start of the trial, taken directly from the pdf}
+#fix the names of the patients in the starting dose frame to facilitate joining later on
+DIUR_005_pre_trial_doses$Subject_identifier <-
+  gsub(x=DIUR_005_pre_trial_doses$Subject_identifier,
+       pattern="D005",
+       replacement="DIUR-005")
+
+DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation <-
+  ifelse(DIUR_005_pre_trial_doses$Reported_name_of_drug=="Dexamethasone" |
+         DIUR_005_pre_trial_doses$Reported_name_of_drug=="Dectancyl" ,
+         as.numeric(DIUR_005_pre_trial_doses$Total_daily_dose) *
+           hydrocortisone_from_dexamethasone_multiplier,
+         NA)
+
+DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation <-
+  ifelse(DIUR_005_pre_trial_doses$Reported_name_of_drug=="Hydrocortisone",
+         as.numeric(DIUR_005_pre_trial_doses$Total_daily_dose) ,
+         DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation)
+
+DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation <-
+  ifelse(DIUR_005_pre_trial_doses$Reported_name_of_drug=="Prednisolone" | 
+         DIUR_005_pre_trial_doses$Reported_name_of_drug=="Prednisone",
+         as.numeric(DIUR_005_pre_trial_doses$Total_daily_dose) *
+           hydrocortisone_from_prednisolone_multiplier ,
+         DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation)
+
+DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation <-
+  ifelse(DIUR_005_pre_trial_doses$Reported_name_of_drug=="Plenadren",
+         as.numeric(DIUR_005_pre_trial_doses$Total_daily_dose) ,
+         DIUR_005_pre_trial_doses$pre_trial_total_daily_hydrocortisone_equivalent_of_preparation)
+
+#then we can take out just the steroid medication details to join later
+pre_trial_doses_steroid <-
+  subset(DIUR_005_pre_trial_doses, 
+         Reported_name_of_drug == "Plenadren" |
+         Reported_name_of_drug == "Prednisolone" |
+         Reported_name_of_drug == "Prednisone" |
+         Reported_name_of_drug == "Hydrocortisone" |
+         Reported_name_of_drug == "Dexamethasone" |
+         Reported_name_of_drug == "Dectancyl" 
+         )
+
+pre_trial_doses_steroid_no_IV <-
+  subset(pre_trial_doses_steroid, Route!="INTRAVENOUS")
+
+pre_trial_doses_steroid_no_IV$duration_of_medication_number <- 
+  as.numeric(pre_trial_doses_steroid_no_IV$duration_of_medication)
+pre_trial_doses_steroid_no_sick_day <-
+  subset(pre_trial_doses_steroid_no_IV, 
+         duration_of_medication_number > 100 |
+         duration_of_medication =="END"  )
+
+pre_trial_doses_steroid_no_pred_duplicate <-
+  subset(pre_trial_doses_steroid_no_sick_day, 
+         Study_day_of_start_of_medication!=-232)
+
+pre_trial_doses_steroid_no_blank <-
+  subset(pre_trial_doses_steroid_no_pred_duplicate, 
+         Study_day_of_start_of_medication!=-448)
+
+#we then need to sum up the total daily doses
+pre_trial_doses_to_sum <- 
+  pre_trial_doses_steroid_no_blank %>% 
+  group_by(Subject_identifier) %>%
+  dplyr::reframe(
+    pre_trial_daily_hydrocortisone_equivalent=
+      sum(pre_trial_total_daily_hydrocortisone_equivalent_of_preparation))
+
+pre_trial_types_of_steroid <-
+  pre_trial_doses_steroid_no_blank[,c(
+    "Subject_identifier", 
+    "Reported_name_of_drug")]
+
+#patients with more than one steroid
+number_of_preparations <-
+pre_trial_types_of_steroid %>%
+  group_by(Subject_identifier) %>%
+  dplyr::reframe(
+    number_of_preparations=length(Subject_identifier)
+  )
+
+#add that into the frame
+pre_trial_doses_steroid_with_number_of_preparations <-
+  left_join(pre_trial_doses_steroid_no_blank, 
+            number_of_preparations, 
+            by = join_by(Subject_identifier))
+
+#now create a preparation column
+pre_trial_doses_steroid_with_number_of_preparations$pre_trial_steroid_preparation <-
+  ifelse(
+    pre_trial_doses_steroid_with_number_of_preparations$number_of_preparations==1,
+    pre_trial_doses_steroid_with_number_of_preparations$Reported_name_of_drug,
+    "mixed_dosing"
+  )
+
+#now add the hydrocortisone equivalent up
+pre_trial_total_hydrocortisone_equivalent <-
+  pre_trial_doses_steroid_with_number_of_preparations %>%
+  group_by(Subject_identifier) %>%
+  dplyr::reframe(pre_trial_total_daily_hydrocortisone_equivalent_of_all_preparations =
+  sum(pre_trial_total_daily_hydrocortisone_equivalent_of_preparation))
+
+pre_trial_doses_steroid_with_total_daily_doses <-
+  left_join(pre_trial_doses_steroid_with_number_of_preparations, 
+            pre_trial_total_hydrocortisone_equivalent,
+            by = join_by(Subject_identifier))
+
+print("this now tells us how many patients were on multiple preparations")
+nrow(pre_trial_doses_steroid_with_total_daily_doses)-
+  length(unique(pre_trial_doses_steroid_with_total_daily_doses$Subject_identifier))
+
+pre_trial_doses_steroid_with_mixed_regimes <-
+  subset(pre_trial_doses_steroid_with_total_daily_doses, pre_trial_steroid_preparation=="mixed_dosing")
+
+pre_trial_mixed_preparation_patients <- 
+  as.data.frame(unique(pre_trial_doses_steroid_with_mixed_regimes$Subject_identifier))
+
+#Create the amount of each type of steroid everyone was on in their own column - this sort of makes it wide, but not quite. For someone on prednisolone we want them to be on zero of hydrocortisone, etc, so they can be modelled in absolute terms together
+pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_hydrocortisone <-
+  ifelse(pre_trial_doses_steroid_with_total_daily_doses$Reported_name_of_drug=="Hydrocortisone",
+         as.numeric(pre_trial_doses_steroid_with_total_daily_doses$Total_daily_dose),
+         0)
+
+pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_prednisolone <-
+  ifelse(pre_trial_doses_steroid_with_total_daily_doses$Reported_name_of_drug=="Prednisolone",
+         as.numeric(pre_trial_doses_steroid_with_total_daily_doses$Total_daily_dose),
+         0)
+
+pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_prednisone <-
+  ifelse(pre_trial_doses_steroid_with_total_daily_doses$Reported_name_of_drug=="Prednisone",
+         as.numeric(pre_trial_doses_steroid_with_total_daily_doses$Total_daily_dose),
+         0)
+
+pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_plenadren <-
+  ifelse(pre_trial_doses_steroid_with_total_daily_doses$Reported_name_of_drug=="Plenadren",
+         as.numeric(pre_trial_doses_steroid_with_total_daily_doses$Total_daily_dose),
+         0)
+
+pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_dexamethasone <-
+  ifelse(pre_trial_doses_steroid_with_total_daily_doses$Reported_name_of_drug=="Dectancyl" | 
+         pre_trial_doses_steroid_with_total_daily_doses$Reported_name_of_drug=="Dexamethasone",
+         as.numeric(pre_trial_doses_steroid_with_total_daily_doses$Total_daily_dose),
+         0)
+
+#create a check column now, because all of those should equal the total daily dose
+pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_steroid_check <-
+  pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_hydrocortisone +
+  pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_prednisolone +
+  pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_prednisone +
+  pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_plenadren +
+  pre_trial_doses_steroid_with_total_daily_doses$pre_trial_total_daily_dexamethasone
+
+#pull out these separate doses columns so we can add them up and make them one row per person
+pre_trial_separate_doses <-
+  pre_trial_doses_steroid_with_total_daily_doses[,c(
+    "Subject_identifier",
+    "pre_trial_total_daily_hydrocortisone",
+    "pre_trial_total_daily_prednisolone",
+    "pre_trial_total_daily_prednisone",
+    "pre_trial_total_daily_plenadren",
+    "pre_trial_total_daily_dexamethasone")]
+
+#use dplyr::summarise to add up each person, and get the separate preparation doses for the same person on each row
+pre_trial_separate_doses_to_join <-
+  pre_trial_doses_steroid_with_total_daily_doses %>%
+  group_by(Subject_identifier) %>%
+  dplyr::summarise(
+    pre_trial_total_daily_hydrocortisone=sum(pre_trial_total_daily_hydrocortisone),
+    pre_trial_total_daily_prednisolone=sum(pre_trial_total_daily_prednisolone),
+    pre_trial_total_daily_prednisone=sum(pre_trial_total_daily_prednisone),
+    pre_trial_total_daily_plenadren=sum(pre_trial_total_daily_plenadren),
+    pre_trial_total_daily_dexamethasone=sum(pre_trial_total_daily_dexamethasone))
+
+#then we can create a frame to join of the total doses
+pre_trial_total_doses_to_join <-
+  unique(pre_trial_doses_steroid_with_total_daily_doses[,c(
+    "Subject_identifier",
+    "pre_trial_steroid_preparation",
+    "pre_trial_total_daily_hydrocortisone_equivalent_of_all_preparations")]) #we make unique to get rid of the double rows for patients on two preparations
+
+#join those frames together
+pre_trial_doses_to_join <-
+  left_join(pre_trial_total_doses_to_join,
+            pre_trial_separate_doses_to_join,
+            by = join_by(Subject_identifier))
+```
+
+```{r, showing what sort of exposure column there is}
+print("These are the notes allied to each dosing regimen:")
+print("**************************************************")
+freq(ADEX$EXTPT)
+```
+
+```{r, tidy exposure of patients to glucocorticoid doses ready to join}
+#pull out the actual exposures
+actual_exposure <- 
+  subset(ADEX, 
+         EXSCAT=="ACTUAL EXPOSURE")
+
+#remove 'other'
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other", 
+         NA, 
+         "daily_dosing")
+
+#manual correction of 'other' ones we want to keep
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/201/002", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/201/002", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/201/014", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/201/014" &
+           actual_exposure$ASTDY == 84, 
+         NA, 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/401/005" &
+           actual_exposure$ASTDY == 3, 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/402/002", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/402/007", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/501/002", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/501/005", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$AENDT <- ifelse(
+  actual_exposure$ASTDTM=="2016-09-17T07:00:00" & 
+  actual_exposure$USUBJID == "DIUR-005/501/005",
+  20727,
+  actual_exposure$AENDT
+  )
+
+actual_exposure$AENDTM <- ifelse(
+  actual_exposure$ASTDTM=="2016-09-17T07:00:00" & 
+  actual_exposure$USUBJID == "DIUR-005/501/005",
+  "2016-09-30T23:00:00",
+  actual_exposure$AENDTM
+  )
+
+actual_exposure$AENDY <- ifelse(
+  actual_exposure$ASTDTM=="2016-09-17T07:00:00" & 
+  actual_exposure$USUBJID == "DIUR-005/501/005",
+  113,
+  actual_exposure$AENDY
+  )
+
+actual_exposure$ADURN <- ifelse(
+  actual_exposure$ASTDTM=="2016-09-17T07:00:00" & 
+  actual_exposure$USUBJID == "DIUR-005/501/005",
+  15,
+  actual_exposure$ADURN
+  )
+
+actual_exposure$EXENDTC <- ifelse(
+  actual_exposure$ASTDTM=="2016-09-17T07:00:00" & 
+  actual_exposure$USUBJID == "DIUR-005/501/005",
+  "2016-09-30T23:00:00",
+  actual_exposure$EXENDTC
+  )
+
+actual_exposure$EXENDY <- ifelse(
+  actual_exposure$ASTDTM=="2016-09-17T07:00:00" & 
+  actual_exposure$USUBJID == "DIUR-005/501/005",
+  113,
+  actual_exposure$EXENDY
+  )
+
+row_to_bind_in <- subset(actual_exposure, 
+                         EXSTDY==114 & 
+                           USUBJID=="DIUR-005/501/005")
+
+row_to_bind_in$EXTRT <- "Hydrocortisone"
+row_to_bind_in$EXDOSE <- 10
+row_to_bind_in$EXDOS1 <- 10
+row_to_bind_in$EXDOS4 <- 0
+row_to_bind_in$hydrocortisone_equivalent <- 10
+
+actual_exposure <- 
+  rbind(actual_exposure, row_to_bind_in)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/601/001", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/702/001", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/702/005", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure$daily_dosing <- 
+  ifelse(actual_exposure$EXTPT=="Other" & 
+           actual_exposure$USUBJID == "DIUR-005/702/010", 
+         "daily_dosing", 
+         actual_exposure$daily_dosing)
+
+actual_exposure_with_other <- actual_exposure
+
+actual_exposure <- 
+  subset(actual_exposure, 
+         daily_dosing=="daily_dosing")
+```
+
+```{r, we can now convert each binned dose to a hydrocortisone equivalent}
+actual_exposure$hydrocortisone_equivalent_bin_a <- 
+  actual_exposure$EXDOS1
+
+actual_exposure$hydrocortisone_equivalent_bin_a <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" |
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS1,
+  actual_exposure$hydrocortisone_equivalent_bin_a
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_a <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" |
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS1 * hydrocortisone_from_prednisolone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_a
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_a <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone",
+  actual_exposure$EXDOS1 * hydrocortisone_from_dexamethasone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_a
+)
+
+actual_exposure$bin_a_hydrocortisone <- ifelse(
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS1,
+  0)
+actual_exposure$bin_a_chronocort <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" ,
+  actual_exposure$EXDOS1,
+  0)
+actual_exposure$bin_a_prednisolone <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" ,
+  actual_exposure$EXDOS1,
+  0)
+actual_exposure$bin_a_prednisone <- ifelse(
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS1,
+  0)
+actual_exposure$bin_a_dexamethasone <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone" ,
+  actual_exposure$EXDOS1,
+  0)
+
+
+actual_exposure$hydrocortisone_equivalent_bin_b <- actual_exposure$EXDOS2
+
+actual_exposure$hydrocortisone_equivalent_bin_b <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" |
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS2,
+  actual_exposure$hydrocortisone_equivalent_bin_b
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_b <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" |
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS2 * hydrocortisone_from_prednisolone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_b
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_b <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone",
+  actual_exposure$EXDOS2 * hydrocortisone_from_dexamethasone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_b
+)
+
+actual_exposure$bin_b_hydrocortisone <- ifelse(
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS2,
+  0)
+actual_exposure$bin_b_chronocort <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" ,
+  actual_exposure$EXDOS2,
+  0)
+actual_exposure$bin_b_prednisolone <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" ,
+  actual_exposure$EXDOS2,
+  0)
+actual_exposure$bin_b_prednisone <- ifelse(
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS2,
+  0)
+actual_exposure$bin_b_dexamethasone <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone" ,
+  actual_exposure$EXDOS2,
+  0)
+
+
+actual_exposure$hydrocortisone_equivalent_bin_c <- actual_exposure$EXDOS3
+
+actual_exposure$hydrocortisone_equivalent_bin_c <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" |
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS3,
+  actual_exposure$hydrocortisone_equivalent_bin_c
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_c <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" |
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS3 * hydrocortisone_from_prednisolone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_c
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_c <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone",
+  actual_exposure$EXDOS3 * hydrocortisone_from_dexamethasone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_c
+)
+
+actual_exposure$bin_c_hydrocortisone <- ifelse(
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS3,
+  0)
+actual_exposure$bin_c_chronocort <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" ,
+  actual_exposure$EXDOS3,
+  0)
+actual_exposure$bin_c_prednisolone <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" ,
+  actual_exposure$EXDOS3,
+  0)
+actual_exposure$bin_c_prednisone <- ifelse(
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS3,
+  0)
+actual_exposure$bin_c_dexamethasone <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone" ,
+  actual_exposure$EXDOS3,
+  0)
+
+actual_exposure$hydrocortisone_equivalent_bin_d <- actual_exposure$EXDOS4
+
+actual_exposure$hydrocortisone_equivalent_bin_d <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" |
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS4,
+  actual_exposure$hydrocortisone_equivalent_bin_d
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_d <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" |
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS4 * hydrocortisone_from_prednisolone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_d
+)
+
+actual_exposure$hydrocortisone_equivalent_bin_d <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone",
+  actual_exposure$EXDOS4 * hydrocortisone_from_dexamethasone_multiplier,
+  actual_exposure$hydrocortisone_equivalent_bin_d
+)
+
+actual_exposure$bin_d_hydrocortisone <- ifelse(
+  actual_exposure$EXTRT=="Hydrocortisone" ,
+  actual_exposure$EXDOS4,
+  0)
+actual_exposure$bin_d_chronocort <- ifelse(
+  actual_exposure$EXTRT=="Chronocort" ,
+  actual_exposure$EXDOS4,
+  0)
+actual_exposure$bin_d_prednisolone <- ifelse(
+  actual_exposure$EXTRT=="Prednisolone" ,
+  actual_exposure$EXDOS4,
+  0)
+actual_exposure$bin_d_prednisone <- ifelse(
+  actual_exposure$EXTRT=="Prednisone" ,
+  actual_exposure$EXDOS4,
+  0)
+actual_exposure$bin_d_dexamethasone <- ifelse(
+  actual_exposure$EXTRT=="Dexamethasone" ,
+  actual_exposure$EXDOS4,
+  0)
+```
+
+
+```{r, ordering the exposure frame, and creating an exposure_sequence order column}
+actual_exposure <- 
+  actual_exposure[order(actual_exposure$EXTRT,
+                        actual_exposure$USUBJID,
+                        actual_exposure$EXSTDY
+                        ),]
+
+actual_exposure$exposure_sequence <- 
+  ave(actual_exposure$EXSTDY, 
+      actual_exposure$EXTRT,
+      actual_exposure$USUBJID, 
+      FUN = seq_along)
+
+actual_exposure$preparation_exposure_sequence <-
+  paste0(actual_exposure$EXTRT, "_", actual_exposure$exposure_sequence)
+
+actual_exposure <- 
+  actual_exposure[order(actual_exposure$USUBJID,
+                        actual_exposure$EXSTDY
+                        ),]
+```
+
+```{r, finding out which preparation patients are on at each visit}
+actual_exposure_on_same_day <-
+  actual_exposure %>%
+  group_by(USUBJID, ASTDY) %>%
+  dplyr::summarise(total_number_of_preparations=length(USUBJID))
+
+actual_exposure_on_same_day_same_preparation <-
+  actual_exposure %>%
+  group_by(USUBJID, ASTDY, EXTRT) %>%
+  dplyr::summarise(nrow=length(USUBJID))
+
+actual_exposure_on_same_day_same_preparation <-
+  actual_exposure %>%
+  group_by(USUBJID, ASTDY, EXTRT) %>%
+  dplyr::summarise(nrow=length(USUBJID)) %>%
+  slice_max(EXTRT, n=1, with_ties = F)
+
+actual_exposure_on_same_day_same_preparation$nrow <- NULL
+
+actual_exposure_group_per_day <- 
+  left_join(actual_exposure_on_same_day,
+               actual_exposure_on_same_day_same_preparation)
+
+actual_exposure_group_per_day$preparation_at_visit <-
+  actual_exposure_group_per_day$EXTRT
+actual_exposure_group_per_day$preparation_at_visit <-
+  ifelse(actual_exposure_group_per_day$total_number_of_preparations > 1, 
+         "mixed_dosing", 
+         actual_exposure_group_per_day$preparation_at_visit)
+
+actual_exposure_group_per_day$preparation_at_visit <- 
+  ifelse(
+  actual_exposure_group_per_day$USUBJID=="DIUR-005/201/014",
+  "mixed_dosing",
+  actual_exposure_group_per_day$preparation_at_visit
+)
+
+actual_exposure_group_per_day$preparation_at_visit <- ifelse(
+  actual_exposure_group_per_day$USUBJID=="DIUR-005/101/011",
+  "mixed_dosing",
+  actual_exposure_group_per_day$preparation_at_visit
+)
+
+actual_exposure_group_per_day$preparation_at_visit <- ifelse(
+  actual_exposure_group_per_day$USUBJID=="DIUR-005/101/019",
+  "mixed_dosing",
+  actual_exposure_group_per_day$preparation_at_visit
+)
+
+actual_exposure_group_per_day$preparation_at_visit <- ifelse(
+  actual_exposure_group_per_day$USUBJID=="DIUR-005/501/005",
+  "mixed_dosing",
+  actual_exposure_group_per_day$preparation_at_visit
+)
+
+actual_exposure_group_per_day$preparation_at_visit <- ifelse(
+  actual_exposure_group_per_day$USUBJID=="DIUR-005/701/009",
+  "mixed_dosing",
+  actual_exposure_group_per_day$preparation_at_visit
+)
+
+actual_exposure_group_per_day$preparation_at_visit <- ifelse(
+  actual_exposure_group_per_day$USUBJID=="DIUR-005/701/010",
+  "mixed_dosing",
+  actual_exposure_group_per_day$preparation_at_visit
+)
+
+actual_exposure_group_per_day_without_EXTRT <- 
+  actual_exposure_group_per_day
+
+actual_exposure_group_per_day_without_EXTRT$EXTRT <- NULL
+
+actual_exposure_group_per_patient <-
+  actual_exposure_group_per_day_without_EXTRT %>%
+  group_by(USUBJID, preparation_at_visit) %>%
+  dplyr::summarise(number_of_different_days_recorded=length(USUBJID)) 
+
+freq(actual_exposure_group_per_patient$preparation_at_visit) 
+
+bab <- as.data.frame(freq(actual_exposure_group_per_patient$USUBJID) )
+print("this is the total number of patients:")
+length(unique(actual_exposure_group_per_patient$USUBJID))
+```
+
+```{r, pull out the exposure groups by patient to join}
+actual_exposure_group_to_join <-
+  actual_exposure_group_per_patient[,c("USUBJID", "preparation_at_visit")]
+
+steroid_profiles_with_exposure_group <-
+  left_join(steroid_profiles, 
+            actual_exposure_group_per_patient, 
+            by = join_by(USUBJID))
+
+print("this should be zero:")
+nrow(steroid_profiles_with_exposure_group) - nrow(steroid_profiles)
+
+steroid_profiles <- steroid_profiles_with_exposure_group
+
+actual_exposure_with_group <- 
+  left_join(actual_exposure, actual_exposure_group_per_patient, by = join_by(USUBJID))
+```
+
+```{r, collecting total daily dose of hydrocortisone equivalent}
+#one 24 hour entry into our frame of actual_exposure has exposure_sequence that is the same number. They may have days that are one apart, but the exposure_sequence is the same number
+actual_exposure_to_total <- 
+  actual_exposure_with_group[,c(        "USUBJID", 
+                                        "exposure_sequence", 
+                                        "EXTRT",  #EXTRT is the precise preparation
+                                        "hydrocortisone_equivalent", 
+                                        "hydrocortisone_equivalent_bin_a",
+                                        "hydrocortisone_equivalent_bin_b",
+                                        "hydrocortisone_equivalent_bin_c",
+                                        "hydrocortisone_equivalent_bin_d",
+                                        "preparation_at_visit",
+                                        "bin_a_hydrocortisone",
+                                        "bin_a_chronocort",
+                                        "bin_a_prednisolone",
+                                        "bin_a_prednisone",
+                                        "bin_a_dexamethasone",
+                                        "bin_b_hydrocortisone",
+                                        "bin_b_chronocort",
+                                        "bin_b_prednisolone",
+                                        "bin_b_prednisone",
+                                        "bin_b_dexamethasone",
+                                        "bin_c_hydrocortisone",
+                                        "bin_c_chronocort",
+                                        "bin_c_prednisolone",
+                                        "bin_c_prednisone",
+                                        "bin_c_dexamethasone",
+                                        "bin_d_hydrocortisone",
+                                        "bin_d_chronocort",
+                                        "bin_d_prednisolone",
+                                        "bin_d_prednisone",
+                                        "bin_d_dexamethasone"
+                                        )]
+
+nrow(actual_exposure_to_total)
+
+#now we can summarise that, without grouping by the EXTRT preparation specific
+actual_exposure_total <-
+  actual_exposure_to_total %>%
+  group_by(USUBJID, exposure_sequence) %>%
+  dplyr::reframe(#USBJID=USUBJID,
+                   #exposure_sequence=exposure_sequence,
+                   total_daily_hydrocortisone_equivalent=sum(hydrocortisone_equivalent),
+                   total_daily_hydrocortisone_equivalent_bin_a=sum(hydrocortisone_equivalent_bin_a),
+                   total_daily_hydrocortisone_equivalent_bin_b=sum(hydrocortisone_equivalent_bin_b),
+                   total_daily_hydrocortisone_equivalent_bin_c=sum(hydrocortisone_equivalent_bin_c),
+                   total_daily_hydrocortisone_equivalent_bin_d=sum(hydrocortisone_equivalent_bin_d),
+                   #we also sum up out individual preparation columns
+                   total_bin_a_hydrocortisone =sum(bin_a_hydrocortisone),
+                   total_bin_a_chronocort     =sum(bin_a_chronocort),
+                   total_bin_a_prednisolone   =sum(bin_a_prednisolone),
+                   total_bin_a_prednisone     =sum(bin_a_prednisone),
+                   total_bin_a_dexamethasone  =sum(bin_a_dexamethasone),
+                   total_bin_b_hydrocortisone =sum(bin_b_hydrocortisone),
+                   total_bin_b_chronocort     =sum(bin_b_chronocort),
+                   total_bin_b_prednisolone   =sum(bin_b_prednisolone),
+                   total_bin_b_prednisone     =sum(bin_b_prednisone),
+                   total_bin_b_dexamethasone  =sum(bin_b_dexamethasone),
+                   total_bin_c_hydrocortisone =sum(bin_c_hydrocortisone),
+                   total_bin_c_chronocort     =sum(bin_c_chronocort),
+                   total_bin_c_prednisolone   =sum(bin_c_prednisolone),
+                   total_bin_c_prednisone     =sum(bin_c_prednisone),
+                   total_bin_c_dexamethasone  =sum(bin_c_dexamethasone),
+                   total_bin_d_hydrocortisone =sum(bin_d_hydrocortisone),
+                   total_bin_d_chronocort     =sum(bin_d_chronocort),
+                   total_bin_d_prednisolone   =sum(bin_d_prednisolone),
+                   total_bin_d_prednisone     =sum(bin_d_prednisone),
+                   total_bin_d_dexamethasone  =sum(bin_d_dexamethasone))
+
+#now we just use our separate binned doses to create a separate total daily absolute column for each preparation
+actual_exposure_total$absolute_daily_hydrocortisone <-
+  (
+    actual_exposure_total$total_bin_a_hydrocortisone +
+    actual_exposure_total$total_bin_b_hydrocortisone +
+    actual_exposure_total$total_bin_c_hydrocortisone +
+    actual_exposure_total$total_bin_d_hydrocortisone
+  )
+actual_exposure_total$absolute_daily_chronocort <-
+  (
+    actual_exposure_total$total_bin_a_chronocort +
+    actual_exposure_total$total_bin_b_chronocort +
+    actual_exposure_total$total_bin_c_chronocort +
+    actual_exposure_total$total_bin_d_chronocort
+  )
+actual_exposure_total$absolute_daily_prednisolone <-
+  (
+    actual_exposure_total$total_bin_a_prednisolone +
+    actual_exposure_total$total_bin_b_prednisolone +
+    actual_exposure_total$total_bin_c_prednisolone +
+    actual_exposure_total$total_bin_d_prednisolone
+  )
+actual_exposure_total$absolute_daily_prednisone <-
+  (
+    actual_exposure_total$total_bin_a_prednisone +
+    actual_exposure_total$total_bin_b_prednisone +
+    actual_exposure_total$total_bin_c_prednisone +
+    actual_exposure_total$total_bin_d_prednisone
+  )
+actual_exposure_total$absolute_daily_dexamethasone <-
+  (
+    actual_exposure_total$total_bin_a_dexamethasone +
+    actual_exposure_total$total_bin_b_dexamethasone +
+    actual_exposure_total$total_bin_c_dexamethasone +
+    actual_exposure_total$total_bin_d_dexamethasone
+  )
+#we also want an absolute_daily_prednisolone_or_prednisone column to allow combination of those preparations
+actual_exposure_total$absolute_daily_prednisolone_or_prednisone <- 
+  actual_exposure_total$absolute_daily_prednisolone  +  
+  actual_exposure_total$absolute_daily_prednisone
+
+#we want our total milligrams in each bin as a separate column
+actual_exposure_total$total_bin_a_milligrams <- 
+  actual_exposure_total$total_bin_a_hydrocortisone +
+  actual_exposure_total$total_bin_a_chronocort +
+  actual_exposure_total$total_bin_a_prednisolone +
+  actual_exposure_total$total_bin_a_prednisone +
+  actual_exposure_total$total_bin_a_dexamethasone
+
+actual_exposure_total$total_bin_b_milligrams <- 
+  actual_exposure_total$total_bin_b_hydrocortisone +
+  actual_exposure_total$total_bin_b_chronocort +
+  actual_exposure_total$total_bin_b_prednisolone +
+  actual_exposure_total$total_bin_b_prednisone +
+  actual_exposure_total$total_bin_b_dexamethasone
+
+actual_exposure_total$total_bin_c_milligrams <- 
+  actual_exposure_total$total_bin_c_hydrocortisone +
+  actual_exposure_total$total_bin_c_chronocort +
+  actual_exposure_total$total_bin_c_prednisolone +
+  actual_exposure_total$total_bin_c_prednisone +
+  actual_exposure_total$total_bin_c_dexamethasone
+
+actual_exposure_total$total_bin_d_milligrams <- 
+  actual_exposure_total$total_bin_d_hydrocortisone +
+  actual_exposure_total$total_bin_d_chronocort +
+  actual_exposure_total$total_bin_d_prednisolone +
+  actual_exposure_total$total_bin_d_prednisone +
+  actual_exposure_total$total_bin_d_dexamethasone
+
+#we can create a check column here for total daily hydrocortisone equivalent
+actual_exposure_total$check_column <-
+  actual_exposure_total$total_daily_hydrocortisone_equivalent -
+  actual_exposure_total$total_daily_hydrocortisone_equivalent_bin_a -
+  actual_exposure_total$total_daily_hydrocortisone_equivalent_bin_b -
+  actual_exposure_total$total_daily_hydrocortisone_equivalent_bin_c -
+  actual_exposure_total$total_daily_hydrocortisone_equivalent_bin_d 
+
+print("the following number should be zero:")
+sum(actual_exposure_total$check_column)  
+
+print("number on mixed is:")
+
+sum(actual_exposure_to_total$preparation_at_visit=="mixed_dosing") / 2
+
+study_patients_on_mixed_dosing <- 
+  subset(actual_exposure_to_total, preparation_at_visit=="mixed_dosing")
+
+study_patients_on_mixed_dosing <- as.data.frame(unique(study_patients_on_mixed_dosing$USUBJID))
+
+print("This should say zero:")
+nrow(actual_exposure_to_total) - 
+  nrow(actual_exposure_total) - 
+  sum(actual_exposure_to_total$preparation_at_visit=="mixed_dosing") /2
+```
+
+```{r, join the total daily hydrocortisone equivalent back into the frame }
+actual_exposure_with_group_and_total_hydrocortisone_equivalent <- 
+  left_join(actual_exposure_with_group, 
+            actual_exposure_total, 
+            by = join_by(USUBJID, exposure_sequence))
+```
+
+```{r, pivot wider the regular exposure, so all changes of dose per patient are on the same row}
+actual_exposure_with_group_and_total_hydrocortisone_equivalent_to_pivot_wider <-
+  actual_exposure_with_group_and_total_hydrocortisone_equivalent[,c(
+    "USUBJID",
+    "preparation_at_visit",
+    "exposure_sequence",
+    "hydrocortisone_equivalent_bin_a",
+    "hydrocortisone_equivalent_bin_b",
+    "hydrocortisone_equivalent_bin_c",
+    "hydrocortisone_equivalent_bin_d",
+    "total_daily_hydrocortisone_equivalent",
+    "absolute_daily_hydrocortisone",
+    "absolute_daily_chronocort",
+    "absolute_daily_prednisolone",
+    "absolute_daily_prednisone",
+    "absolute_daily_prednisolone_or_prednisone",
+    "absolute_daily_dexamethasone",
+    "total_bin_a_milligrams",
+    "total_bin_b_milligrams",
+    "total_bin_c_milligrams",
+    "total_bin_d_milligrams",
+    "EXSTDY",
+    "EXENDY",
+    "EXSTDTC",
+    "EXENDTC")]
+
+sliced_frame_to_make_wider <-
+  actual_exposure_with_group_and_total_hydrocortisone_equivalent_to_pivot_wider %>%
+  group_by(USUBJID, exposure_sequence) %>%
+  slice_max(order_by=exposure_sequence, with_ties = F, n=1)
+
+#rename the columns
+names(sliced_frame_to_make_wider)[names(sliced_frame_to_make_wider)=="EXSTDTC"] <- 
+  "dosing_start_date"
+names(sliced_frame_to_make_wider)[names(sliced_frame_to_make_wider)=="EXENDTC"] <- 
+  "dosing_end_date"
+names(sliced_frame_to_make_wider)[names(sliced_frame_to_make_wider)=="EXSTDY"]  <-
+  "dosing_start_days_into_study"
+names(sliced_frame_to_make_wider)[names(sliced_frame_to_make_wider)=="EXENDY"]  <-
+  "dosing_end_days_into_study"
+
+wide_actual_exposure <-
+  pivot_wider(data=sliced_frame_to_make_wider,
+              names_from=exposure_sequence,
+              values_from=c(total_daily_hydrocortisone_equivalent,
+                            hydrocortisone_equivalent_bin_a,
+                            hydrocortisone_equivalent_bin_b,
+                            hydrocortisone_equivalent_bin_c,
+                            hydrocortisone_equivalent_bin_d,
+                            absolute_daily_hydrocortisone,
+                            absolute_daily_chronocort,
+                            absolute_daily_prednisolone,
+                            absolute_daily_prednisone,
+                            absolute_daily_dexamethasone,
+                            absolute_daily_prednisolone_or_prednisone,
+                            total_bin_a_milligrams,
+                            total_bin_b_milligrams,
+                            total_bin_c_milligrams,
+                            total_bin_d_milligrams,
+                            dosing_start_days_into_study,
+                            dosing_end_days_into_study,
+                            dosing_start_date,
+                            dosing_end_date))
+
+print("if any patient had more than one row, this would be more than zero:")
+nrow(wide_actual_exposure) - length(unique(wide_actual_exposure$USUBJID))
+```
+
+into this, we can now add the starting doses
+
+```{r, pivot wider the regular exposure, so all changes of dose per patient are on the same row}
+wide_actual_exposure_with_start <- 
+  left_join(wide_actual_exposure, 
+            pre_trial_doses_to_join, 
+            by=c("USUBJID"="Subject_identifier"))
+```
+
+now we need to join the dosing group into the steroid frames
+
+```{r, adding exposure to the steroid_profiles frame by joining wide_actual_exposure_with_start}
+steroid_profiles_with_dose <- 
+  left_join(
+    steroid_profiles, 
+    wide_actual_exposure_with_start, 
+    by = join_by(USUBJID, preparation_at_visit))
+
+print("check we haven't added rows:")
+nrow(steroid_profiles_with_dose) - nrow(steroid_profiles)
+
+#correcting exposure for the first visit
+#note the first profile will NOT have been done on chronocort
+
+steroid_profiles_with_dose$preparation_at_visit <-
+  ifelse(steroid_profiles_with_dose$AVISITN==1,
+         steroid_profiles_with_dose$pre_trial_steroid_preparation,
+         steroid_profiles_with_dose$preparation_at_visit)
+
+#then with regards to dosing, we can create total_daily_hydrocortisone_equivalent_at_visit, starting using the pre-trial total daily dose
+
+steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_hydrocortisone_equivalent_of_all_preparations
+
+#similarly we create absolute daily doses at visit
+steroid_profiles_with_dose$absolute_hydrocortisone_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_hydrocortisone
+
+steroid_profiles_with_dose$absolute_chronocort_at_visit <-
+  0 # this is zero because no one was on chronocort at visit 1, we are just creating the appropriate column
+
+steroid_profiles_with_dose$absolute_prednisolone_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_prednisolone
+
+steroid_profiles_with_dose$absolute_prednisone_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_prednisone
+
+#note we can add the prednisone and prednisolone together later
+steroid_profiles_with_dose$absolute_plenadren_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_plenadren
+
+steroid_profiles_with_dose$absolute_dexamethasone_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_dexamethasone
+
+steroid_profiles_with_dose$absolute_plenadren_at_visit <-
+  steroid_profiles_with_dose$pre_trial_total_daily_plenadren
+
+#we also want the total milligrams in each bin at visit, but note this will start at NA, because we don't have the bins for the first visit
+steroid_profiles_with_dose$total_bin_a_milligrams_at_visit <- NA
+steroid_profiles_with_dose$total_bin_b_milligrams_at_visit <- NA
+steroid_profiles_with_dose$total_bin_c_milligrams_at_visit <- NA
+steroid_profiles_with_dose$total_bin_d_milligrams_at_visit <- NA
+```
+
+```{r, calculate the days into the study where each new dose started - dosing_start_days_into_study_2 etc }
+steroid_profiles_with_dose$dosing_start_days_into_study_2 <-
+  ifelse(
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_2),
+    1000,
+    steroid_profiles_with_dose$dosing_start_days_into_study_2
+  )
+
+steroid_profiles_with_dose$dosing_start_days_into_study_3 <-
+  ifelse(
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3),
+    1000,
+    steroid_profiles_with_dose$dosing_start_days_into_study_3
+  )
+
+steroid_profiles_with_dose$dosing_start_days_into_study_4 <-
+  ifelse(
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4),
+    1000,
+    steroid_profiles_with_dose$dosing_start_days_into_study_4
+  )
+
+steroid_profiles_with_dose$dosing_start_days_into_study_5 <-
+  ifelse(
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5),
+    1000,
+    steroid_profiles_with_dose$dosing_start_days_into_study_5
+  )
+
+```
+
+```{r, calculate the dose at the time of the blood measurement which we call total_daily_hydrocortisone_equivalent_at_visit. Also calculate the absolute dose of each preparation}
+steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_1,
+    
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit)
+
+steroid_profiles_with_dose$absolute_hydrocortisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$absolute_daily_hydrocortisone_1,
+    
+    steroid_profiles_with_dose$absolute_hydrocortisone_at_visit)
+
+steroid_profiles_with_dose$absolute_prednisolone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisolone_1,
+    
+    steroid_profiles_with_dose$absolute_prednisolone_at_visit)
+
+steroid_profiles_with_dose$absolute_prednisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisone_1,
+    
+    steroid_profiles_with_dose$absolute_prednisone_at_visit)
+
+steroid_profiles_with_dose$absolute_chronocort_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$absolute_daily_chronocort_1,
+    
+    steroid_profiles_with_dose$absolute_chronocort_at_visit)
+
+steroid_profiles_with_dose$absolute_dexamethasone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$absolute_daily_dexamethasone_1,
+    
+    steroid_profiles_with_dose$absolute_dexamethasone_at_visit)
+
+#now we do the same for the total milligrams in the bins at the visit
+
+steroid_profiles_with_dose$total_bin_a_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$total_bin_a_milligrams_1,
+    
+    steroid_profiles_with_dose$total_bin_a_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_bin_b_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$total_bin_b_milligrams_1,
+    
+    steroid_profiles_with_dose$total_bin_b_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_bin_c_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$total_bin_c_milligrams_1,
+    
+    steroid_profiles_with_dose$total_bin_c_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_bin_d_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    steroid_profiles_with_dose$total_bin_d_milligrams_1,
+    
+    steroid_profiles_with_dose$total_bin_d_milligrams_at_visit)
+
+steroid_profiles_with_dose$absolute_plenadren_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 0, 
+            
+    0,
+    
+    steroid_profiles_with_dose$absolute_plenadren_at_visit)
+```
+
+
+```{r, calculate the dose at the time of the blood measurement - total_daily_hydrocortisone_equivalent_at_visit, and absolute_daily_hydrocortisone_at_visit}
+steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_2,
+    
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit)
+
+
+
+steroid_profiles_with_dose$absolute_hydrocortisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$absolute_daily_hydrocortisone_2,
+    
+    steroid_profiles_with_dose$absolute_hydrocortisone_at_visit)
+
+
+
+steroid_profiles_with_dose$absolute_prednisolone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisolone_2,
+    
+    steroid_profiles_with_dose$absolute_prednisolone_at_visit)
+
+
+
+steroid_profiles_with_dose$absolute_prednisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisone_2,
+    
+    steroid_profiles_with_dose$absolute_prednisone_at_visit)
+
+
+
+steroid_profiles_with_dose$absolute_chronocort_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$absolute_daily_chronocort_2,
+    
+    steroid_profiles_with_dose$absolute_chronocort_at_visit)
+
+
+
+steroid_profiles_with_dose$absolute_dexamethasone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$absolute_daily_dexamethasone_2,
+    
+    steroid_profiles_with_dose$absolute_dexamethasone_at_visit)
+
+steroid_profiles_with_dose$total_bin_a_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$total_bin_a_milligrams_2,
+    
+    steroid_profiles_with_dose$total_bin_a_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_bin_b_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$total_bin_b_milligrams_2,
+    
+    steroid_profiles_with_dose$total_bin_b_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_bin_c_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$total_bin_c_milligrams_2,
+    
+    steroid_profiles_with_dose$total_bin_c_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_bin_d_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$total_bin_d_milligrams_2,
+    
+    steroid_profiles_with_dose$total_bin_d_milligrams_at_visit)
+
+steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_3,
+    
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit )
+
+
+
+steroid_profiles_with_dose$absolute_hydrocortisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$absolute_daily_hydrocortisone_3,
+    
+    steroid_profiles_with_dose$absolute_hydrocortisone_at_visit )
+
+
+
+steroid_profiles_with_dose$absolute_prednisolone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisolone_3,
+    
+    steroid_profiles_with_dose$absolute_prednisolone_at_visit )
+
+
+
+steroid_profiles_with_dose$absolute_prednisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisone_3,
+    
+    steroid_profiles_with_dose$absolute_prednisone_at_visit )
+
+
+
+steroid_profiles_with_dose$absolute_chronocort_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$absolute_daily_chronocort_3,
+    
+    steroid_profiles_with_dose$absolute_chronocort_at_visit )
+
+
+
+steroid_profiles_with_dose$absolute_dexamethasone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$absolute_daily_dexamethasone_3,
+    
+    steroid_profiles_with_dose$absolute_dexamethasone_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_a_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$total_bin_a_milligrams_3,
+    
+    steroid_profiles_with_dose$total_bin_a_milligrams_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_b_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$total_bin_b_milligrams_3,
+    
+    steroid_profiles_with_dose$total_bin_b_milligrams_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_c_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$total_bin_c_milligrams_3,
+    
+    steroid_profiles_with_dose$total_bin_c_milligrams_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_d_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$total_bin_d_milligrams_3,
+    
+    steroid_profiles_with_dose$total_bin_d_milligrams_at_visit )
+
+steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_4,
+    
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit )
+
+
+steroid_profiles_with_dose$absolute_hydrocortisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$absolute_daily_hydrocortisone_4,
+    
+    steroid_profiles_with_dose$absolute_hydrocortisone_at_visit )
+
+
+steroid_profiles_with_dose$absolute_prednisolone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisolone_4,
+    
+    steroid_profiles_with_dose$absolute_prednisolone_at_visit )
+
+
+steroid_profiles_with_dose$absolute_prednisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisone_4,
+    
+    steroid_profiles_with_dose$absolute_prednisone_at_visit )
+
+
+steroid_profiles_with_dose$absolute_chronocort_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$absolute_daily_chronocort_4,
+    
+    steroid_profiles_with_dose$absolute_chronocort_at_visit )
+
+
+steroid_profiles_with_dose$absolute_dexamethasone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$absolute_daily_dexamethasone_4,
+    
+    steroid_profiles_with_dose$absolute_dexamethasone_at_visit )
+
+
+steroid_profiles_with_dose$total_bin_a_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$total_bin_a_milligrams_4,
+    
+    steroid_profiles_with_dose$total_bin_a_milligrams_at_visit )
+
+
+steroid_profiles_with_dose$total_bin_b_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$total_bin_b_milligrams_4,
+    
+    steroid_profiles_with_dose$total_bin_b_milligrams_at_visit )
+
+
+steroid_profiles_with_dose$total_bin_c_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$total_bin_c_milligrams_4,
+    
+    steroid_profiles_with_dose$total_bin_c_milligrams_at_visit )
+
+
+steroid_profiles_with_dose$total_bin_d_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$total_bin_d_milligrams_4,
+    
+    steroid_profiles_with_dose$total_bin_d_milligrams_at_visit )
+
+steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_5,
+    
+    steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit )
+
+
+steroid_profiles_with_dose$absolute_hydrocortisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$absolute_daily_hydrocortisone_5,
+    
+    steroid_profiles_with_dose$absolute_hydrocortisone_at_visit )
+
+
+steroid_profiles_with_dose$absolute_prednisolone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisolone_5,
+    
+    steroid_profiles_with_dose$absolute_prednisolone_at_visit )
+
+
+steroid_profiles_with_dose$absolute_prednisone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$absolute_daily_prednisone_5,
+    
+    steroid_profiles_with_dose$absolute_prednisone_at_visit )
+
+
+steroid_profiles_with_dose$absolute_chronocort_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$absolute_daily_chronocort_5,
+    
+    steroid_profiles_with_dose$absolute_chronocort_at_visit )
+
+
+steroid_profiles_with_dose$absolute_dexamethasone_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$absolute_daily_dexamethasone_5,
+    
+    steroid_profiles_with_dose$absolute_dexamethasone_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_a_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$total_bin_a_milligrams_5,
+    
+    steroid_profiles_with_dose$total_bin_a_milligrams_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_b_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$total_bin_b_milligrams_5,
+    
+    steroid_profiles_with_dose$total_bin_b_milligrams_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_c_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$total_bin_c_milligrams_5,
+    
+    steroid_profiles_with_dose$total_bin_c_milligrams_at_visit )
+
+
+
+steroid_profiles_with_dose$total_bin_d_milligrams_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$total_bin_d_milligrams_5,
+    
+    steroid_profiles_with_dose$total_bin_d_milligrams_at_visit )
+
+```
+
+```{r, CREATING A CHECK column }
+
+steroid_profiles_with_dose$check_total_daily_hydrocortisone_equivalent <-
+  steroid_profiles_with_dose$absolute_hydrocortisone_at_visit +
+  steroid_profiles_with_dose$absolute_chronocort_at_visit +
+  steroid_profiles_with_dose$absolute_plenadren_at_visit +
+  steroid_profiles_with_dose$absolute_prednisolone_at_visit * hydrocortisone_from_prednisolone_multiplier+
+  steroid_profiles_with_dose$absolute_prednisone_at_visit * hydrocortisone_from_prednisolone_multiplier+
+  steroid_profiles_with_dose$absolute_dexamethasone_at_visit * hydrocortisone_from_dexamethasone_multiplier
+  
+steroid_profiles_with_dose$check_total_daily <-
+  steroid_profiles_with_dose$check_total_daily_hydrocortisone_equivalent -
+  steroid_profiles_with_dose$total_daily_hydrocortisone_equivalent_at_visit
+```
+
+```{r, create a total absolute milligrams column}
+steroid_profiles_with_dose$absolute_total_milligrams_of_everything_at_visit <-
+  steroid_profiles_with_dose$absolute_hydrocortisone_at_visit +
+  steroid_profiles_with_dose$absolute_chronocort_at_visit +
+  steroid_profiles_with_dose$absolute_plenadren_at_visit +
+  steroid_profiles_with_dose$absolute_prednisolone_at_visit +
+  steroid_profiles_with_dose$absolute_prednisone_at_visit +
+  steroid_profiles_with_dose$absolute_dexamethasone_at_visit 
+```
+
+```{r, add the option to analyse prednisolone and prednisone together}
+steroid_profiles_with_dose$absolute_prednisolone_or_prednisone_at_visit <-
+  steroid_profiles_with_dose$absolute_prednisolone_at_visit +
+  steroid_profiles_with_dose$absolute_prednisone_at_visit
+```
+
+```{r, figure out the hydrocortisone equivalent for all of four binned sections of the dose at the time of the visit}
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 0, 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_1,
+    
+    NA)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_2,
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_3,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_4,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_5,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_a_at_visit )
+
+### now bin b
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 0, 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_1,
+    
+    NA)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_2,
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_3,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_4,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_5,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_b_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 0, 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_1,
+    
+    NA)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_2,
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_3,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_4,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_5,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_c_at_visit )
+
+### now bin d
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 0, 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_1,
+    
+    NA)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_2 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_3), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_2,
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit)
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_3 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_4), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_3,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 &
+    steroid_profiles_with_dose$days_beyond_baseline_visit <= 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 | 
+      
+    steroid_profiles_with_dose$days_beyond_baseline_visit > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_4 & 
+    is.na(steroid_profiles_with_dose$dosing_start_days_into_study_5), 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_4,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit )
+
+steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit <-
+  ifelse(
+    steroid_profiles_with_dose$days_beyond_baseline_visit  > 
+      steroid_profiles_with_dose$dosing_start_days_into_study_5 , 
+            
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_5,
+    
+    steroid_profiles_with_dose$hydrocortisone_equivalent_bin_d_at_visit )
+```
+
+```{r, create binary variables for each preparation at visit}
+steroid_profiles_with_dose$taking_hydrocortisone_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_hydrocortisone_at_visit > 0,
+         1,
+         0)
+steroid_profiles_with_dose$taking_chronocort_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_chronocort_at_visit > 0,
+         1,
+         0)
+steroid_profiles_with_dose$taking_prednisolone_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_prednisolone_at_visit > 0,
+         1,
+         0)
+steroid_profiles_with_dose$taking_prednisone_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_prednisone_at_visit > 0,
+         1,
+         0)
+steroid_profiles_with_dose$taking_prednisolone_or_prednisone_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_prednisolone_or_prednisone_at_visit > 0,
+         1,
+         0)
+steroid_profiles_with_dose$taking_dexamethasone_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_dexamethasone_at_visit > 0,
+         1,
+         0)
+steroid_profiles_with_dose$taking_plenadren_at_visit <-
+  ifelse(steroid_profiles_with_dose$absolute_plenadren_at_visit > 0,
+         1,
+         0)
+```
+
+```{r, tidy up the steroid_profiles_with_dose frame to save on memory down the line by removing unnecessary columns}
+steroid_profiles_with_dose$STUDYID <- NULL
+steroid_profiles_with_dose$PARCAT1N <- NULL
+steroid_profiles_with_dose$PARCAT1 <- NULL
+steroid_profiles_with_dose$PARCAT2N <- NULL
+steroid_profiles_with_dose$PARCAT2 <- NULL
+steroid_profiles_with_dose$PARAMN <- NULL
+steroid_profiles_with_dose$PARAMCD <- NULL
+steroid_profiles_with_dose$ADT <- NULL
+steroid_profiles_with_dose$BASE <- NULL
+steroid_profiles_with_dose$CHG <- NULL
+steroid_profiles_with_dose$ANL01FL <- NULL
+steroid_profiles_with_dose$LBREFID <- NULL
+steroid_profiles_with_dose$LBNRIND <- NULL
+steroid_profiles_with_dose$SRCDOM <- NULL
+steroid_profiles_with_dose$SUBJID <- NULL
+steroid_profiles_with_dose$ARMCD <- NULL
+steroid_profiles_with_dose$ACTARM <- NULL
+steroid_profiles_with_dose$ACTARMCD <- NULL
+steroid_profiles_with_dose$TRT01A <- NULL
+steroid_profiles_with_dose$TRT01AN <- NULL
+steroid_profiles_with_dose$TRT01P <- NULL
+steroid_profiles_with_dose$TRT01PN <- NULL
+steroid_profiles_with_dose$TRTSDT <- NULL
+steroid_profiles_with_dose$TRTSTM <- NULL
+steroid_profiles_with_dose$TRTEDT <- NULL
+steroid_profiles_with_dose$TRTETM <- NULL
+steroid_profiles_with_dose$EXDURN <- NULL
+steroid_profiles_with_dose$AEXDURN <- NULL
+steroid_profiles_with_dose$AGEU <- NULL
+steroid_profiles_with_dose$AGEGR1 <- NULL
+steroid_profiles_with_dose$AGEGR1N <- NULL
+steroid_profiles_with_dose$PBTGRPN <- NULL
+steroid_profiles_with_dose$GROUP01 <- NULL
+steroid_profiles_with_dose$GROUP01D <- NULL
+steroid_profiles_with_dose$ENRLFL <- NULL
+steroid_profiles_with_dose$RANDFL <- NULL
+steroid_profiles_with_dose$SAFFL <- NULL
+steroid_profiles_with_dose$SAFXL <- NULL
+steroid_profiles_with_dose$FASFL <- NULL
+steroid_profiles_with_dose$FASXL <- NULL
+steroid_profiles_with_dose$EVALFL <- NULL
+steroid_profiles_with_dose$EVALXL1 <- NULL
+steroid_profiles_with_dose$EVALXL2 <- NULL
+steroid_profiles_with_dose$EVALXL3 <- NULL
+steroid_profiles_with_dose$EVALXL4 <- NULL
+steroid_profiles_with_dose$DTHFL <- NULL
+steroid_profiles_with_dose$RFICDT <- NULL
+steroid_profiles_with_dose$RFPENDT <- NULL
+steroid_profiles_with_dose$DTHDT <- NULL
+steroid_profiles_with_dose$RANDDT <- NULL
+steroid_profiles_with_dose$EVALXL4 <- NULL
+steroid_profiles_with_dose$EVALXL4 <- NULL
+```
+
+```{r, join in the fludrocortisone doses we separated above}
+steroid_profiles_with_fludrocortisone <-
+  left_join(steroid_profiles_with_dose,
+            fludrocortisone_entries_to_join,
+            by = join_by(USUBJID))
+
+#now create the absolute_fludrocortisone_at_visit
+steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit <-
+  ifelse(steroid_profiles_with_fludrocortisone$AVISITN==1,
+         steroid_profiles_with_fludrocortisone$visit_1_fludro,
+         NA)
+
+steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit <-
+  ifelse(steroid_profiles_with_fludrocortisone$AVISITN==2,
+         steroid_profiles_with_fludrocortisone$visit_2_fludro,
+         steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit)
+
+steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit <-
+  ifelse(steroid_profiles_with_fludrocortisone$AVISITN==3,
+         steroid_profiles_with_fludrocortisone$visit_3_fludro,
+         steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit)
+
+steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit <-
+  ifelse(steroid_profiles_with_fludrocortisone$AVISITN==4,
+         steroid_profiles_with_fludrocortisone$visit_4_fludro,
+         steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit)
+
+#ensure that patients are declared as 0 rather than NA, because they aren't taking fludrocortisone
+steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit <-
+  ifelse(is.na(steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit),
+         0,
+         steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit)
+
+#make it numeric 
+steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit <-
+  as.numeric(steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit)
+
+#code a dummy variable for taking the fludrocortisone
+
+steroid_profiles_with_fludrocortisone$taking_fludrocortisone_at_visit <-
+  ifelse(steroid_profiles_with_fludrocortisone$absolute_fludrocortisone_at_visit > 0,
+         1,
+         0)
+```
+
+```{r, rationalise steroid_profiles name}
+steroid_profiles <- steroid_profiles_with_fludrocortisone
+```
+
+```{r, create a treatment column in steroid_profiles that reflects patients at visit 1 were still taking their standard replacement}
+steroid_profiles$treatment <- 
+  ifelse(steroid_profiles$ARM=="Chronocort" & 
+           steroid_profiles$AVISITN==1, 
+         "Standard therapy", 
+         "Chronocort")
+
+steroid_profiles$treatment <- 
+  ifelse(steroid_profiles$ARM=="Standard GC therapy", 
+         "Standard therapy", 
+         steroid_profiles$treatment)
+```
+
+```{r}
+#create a visit name column for clearer columns
+steroid_profiles$visit_name <-
+  ifelse(steroid_profiles$AVISITN==1,
+         "Visit 1",
+         NA)
+
+steroid_profiles$visit_name <-
+  ifelse(steroid_profiles$AVISITN==2,
+         "Visit 2",
+         steroid_profiles$visit_name)
+
+steroid_profiles$visit_name <-
+  ifelse(steroid_profiles$AVISITN==3,
+         "Visit 3",
+         steroid_profiles$visit_name)
+
+steroid_profiles$visit_name <-
+  as.factor(ifelse(steroid_profiles$AVISITN==4,
+         "Visit 4",
+         steroid_profiles$visit_name))
+```
+
+
+```{r, creating a long dose at visit frame}
+dosing_frame_by_visit <-
+  subset(unique(steroid_profiles[,c(    
+    "id",
+    "id_visit",
+    "SEX",
+    "AVISITN",
+    "BMIDER",
+    "HEIGHT",
+    "WEIGHT",
+    "WSTCIR",
+    "DIABP1",
+    "PULSE1",
+    "RESP1",
+    "SYSBP1",
+    "TEMP1",
+    "DIABP2",
+    "PULSE2",
+    "RESP2",
+    "SYSBP2",
+    "TEMP2",
+    "visit_name",
+    "ARM",
+    "treatment",
+    "pre_trial_steroid_preparation",
+    "preparation_at_visit",
+    "total_daily_hydrocortisone_equivalent_at_visit",
+    "hydrocortisone_equivalent_bin_a_at_visit",
+    "hydrocortisone_equivalent_bin_b_at_visit",
+    "hydrocortisone_equivalent_bin_c_at_visit",
+    "hydrocortisone_equivalent_bin_d_at_visit",
+    "absolute_hydrocortisone_at_visit",
+    "taking_hydrocortisone_at_visit",
+    "absolute_chronocort_at_visit",
+    "taking_chronocort_at_visit",
+    "absolute_prednisolone_at_visit",
+    "taking_prednisolone_at_visit",
+    "absolute_prednisone_at_visit",
+    "taking_prednisone_at_visit",
+    "absolute_prednisolone_or_prednisone_at_visit",
+    "taking_prednisolone_or_prednisone_at_visit",
+    "absolute_plenadren_at_visit",
+    "taking_plenadren_at_visit",
+    "absolute_dexamethasone_at_visit",
+    "taking_dexamethasone_at_visit",
+    "absolute_fludrocortisone_at_visit",
+    "taking_fludrocortisone_at_visit"
+                      )]), AVISITN<5)
+
+dosing_frame_by_visit <- 
+  dosing_frame_by_visit[order(dosing_frame_by_visit$id,
+                        dosing_frame_by_visit$AVISITN
+                        ),]
+
+rownames(dosing_frame_by_visit) <- NULL
+
+#lag the doses, creating lag id first to ifelse against
+dosing_frame_by_visit$id_lag <-
+  lag(dosing_frame_by_visit$id)
+dosing_frame_by_visit$id_lag_lag <-
+  lag(dosing_frame_by_visit$id_lag)
+dosing_frame_by_visit$id_lag_lag_lag <-
+  lag(dosing_frame_by_visit$id_lag_lag)
+
+#do single lags
+dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag <-
+  ifelse(dosing_frame_by_visit$id_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag <-
+  ifelse(dosing_frame_by_visit$id_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag <-
+  ifelse(dosing_frame_by_visit$id_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag <-
+  ifelse(dosing_frame_by_visit$id_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag <-
+  ifelse(dosing_frame_by_visit$id_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit),
+         NA)
+
+#do double lags
+dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag),
+         NA)
+
+#do triple lags 
+dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag),
+         NA)
+dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag_lag <-
+  ifelse(dosing_frame_by_visit$id_lag_lag_lag==dosing_frame_by_visit$id,
+         lag(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag),
+         NA)
+
+#now we assess for change between visits - changes in total from previous
+dosing_frame_by_visit$total_increase_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag <
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$total_increase_at_next_visit <-
+  lead(dosing_frame_by_visit$total_increase_from_previous_visit)
+
+dosing_frame_by_visit$total_maintained_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag ==
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$total_maintained_at_next_visit <-
+  lead(dosing_frame_by_visit$total_maintained_from_previous_visit)
+
+dosing_frame_by_visit$total_decrease_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag >
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$total_decreased_at_next_visit <-
+  lead(dosing_frame_by_visit$total_decrease_from_previous_visit)
+
+#changes in bin a from previous
+dosing_frame_by_visit$bin_a_increase_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_a_increase_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_a_increase_from_previous_visit)
+
+dosing_frame_by_visit$bin_a_maintained_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_a_maintained_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_a_maintained_from_previous_visit)
+
+dosing_frame_by_visit$bin_a_decrease_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_a_decreased_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_a_decrease_from_previous_visit)
+
+#changes in bin b from previous
+dosing_frame_by_visit$bin_b_increase_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_b_increase_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_b_increase_from_previous_visit)
+
+dosing_frame_by_visit$bin_b_maintained_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_b_maintained_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_b_maintained_from_previous_visit)
+
+dosing_frame_by_visit$bin_b_decrease_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_b_decreased_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_b_decrease_from_previous_visit)
+
+#changes in bin c from previous
+dosing_frame_by_visit$bin_c_increase_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_c_increase_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_c_increase_from_previous_visit)
+
+dosing_frame_by_visit$bin_c_maintained_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_c_maintained_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_c_maintained_from_previous_visit)
+
+dosing_frame_by_visit$bin_c_decrease_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_c_decreased_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_c_decrease_from_previous_visit)
+
+#changes in bin d from previous
+dosing_frame_by_visit$bin_d_increase_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_d_increase_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_d_increase_from_previous_visit)
+
+dosing_frame_by_visit$bin_d_maintained_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_d_maintained_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_d_maintained_from_previous_visit)
+
+dosing_frame_by_visit$bin_d_decrease_from_previous_visit <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_d_decreased_at_next_visit <-
+  lead(dosing_frame_by_visit$bin_d_decrease_from_previous_visit)
+
+#now we assess for change between visits - changes in total from two visits ago
+dosing_frame_by_visit$total_increase_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag <
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+
+#note we double lead here to find out what has gone on in TWO visits time
+dosing_frame_by_visit$total_in_two_visits_is_increased <-
+  lead(lead(dosing_frame_by_visit$total_increase_from_two_visits_ago))
+
+dosing_frame_by_visit$total_maintained_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag ==
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$total_in_two_visits_is_maintained <-
+  lead(lead(dosing_frame_by_visit$total_maintained_from_two_visits_ago))
+
+dosing_frame_by_visit$total_decrease_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag >
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$total_in_two_visits_is_decreased <-
+  lead(lead(dosing_frame_by_visit$total_decrease_from_two_visits_ago))
+
+#changes in bin a from two visits ago
+dosing_frame_by_visit$bin_a_increase_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_a_in_two_visits_is_increased <-
+  lead(lead(dosing_frame_by_visit$bin_a_increase_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_a_maintained_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_a_in_two_visits_is_maintained <-
+  lead(lead(dosing_frame_by_visit$bin_a_maintained_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_a_decrease_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_a_in_two_visits_is_decreased <-
+  lead(lead(dosing_frame_by_visit$bin_a_decrease_from_two_visits_ago))
+
+#changes in bin b from two visits ago
+dosing_frame_by_visit$bin_b_increase_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_b_in_two_visits_is_increased <-
+  lead(lead(dosing_frame_by_visit$bin_b_increase_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_b_maintained_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_b_in_two_visits_is_maintained <-
+  lead(lead(dosing_frame_by_visit$bin_b_maintained_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_b_decrease_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_b_in_two_visits_is_decreased <-
+  lead(lead(dosing_frame_by_visit$bin_b_decrease_from_two_visits_ago))
+
+#changes in bin c from two visits ago
+dosing_frame_by_visit$bin_c_increase_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_c_in_two_visits_is_increased <-
+  lead(lead(dosing_frame_by_visit$bin_c_increase_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_c_maintained_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_c_in_two_visits_is_maintained <-
+  lead(lead(dosing_frame_by_visit$bin_c_maintained_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_c_decrease_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_c_in_two_visits_is_decreased <-
+  lead(lead(dosing_frame_by_visit$bin_c_decrease_from_two_visits_ago))
+
+#changes in bin d from two visits ago
+dosing_frame_by_visit$bin_d_increase_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_d_in_two_visits_is_increased <-
+  lead(lead(dosing_frame_by_visit$bin_d_increase_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_d_maintained_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_d_in_two_visits_is_maintained <-
+  lead(lead(dosing_frame_by_visit$bin_d_maintained_from_two_visits_ago))
+
+dosing_frame_by_visit$bin_d_decrease_from_two_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+
+dosing_frame_by_visit$bin_d_in_two_visits_is_decreased <-
+  lead(lead(dosing_frame_by_visit$bin_d_decrease_from_two_visits_ago))
+
+#now we assess for change between visits - changes in total from three visits ago
+dosing_frame_by_visit$total_increase_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag_lag <
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+
+#note we TRIPLE lead now, to find out what goes on in three visits time
+dosing_frame_by_visit$total_in_three_visits_is_increased <-
+  lead(lead(lead(dosing_frame_by_visit$total_increase_from_three_visits_ago)))
+
+dosing_frame_by_visit$total_maintained_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag_lag ==
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$total_in_three_visits_is_maintained <-
+  lead(lead(lead(dosing_frame_by_visit$total_maintained_from_three_visits_ago)))
+
+dosing_frame_by_visit$total_decrease_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit_lag_lag_lag >
+           dosing_frame_by_visit$total_daily_hydrocortisone_equivalent_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$total_in_three_visits_is_decreased <-
+  lead(lead(lead(dosing_frame_by_visit$total_decrease_from_three_visits_ago)))
+
+#changes in bin a from three visits ago
+dosing_frame_by_visit$bin_a_increase_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_a_in_three_visits_is_increased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_a_increase_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_a_maintained_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_a_in_three_visits_is_maintained <-
+  lead(lead(lead(dosing_frame_by_visit$bin_a_maintained_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_a_decrease_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit_lag_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_a_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_a_in_three_visits_is_decreased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_a_decrease_from_three_visits_ago)))
+
+#changes in bin b from three visits ago
+dosing_frame_by_visit$bin_b_increase_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_b_in_three_visits_is_increased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_b_increase_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_b_maintained_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_b_in_three_visits_is_maintained <-
+  lead(lead(lead(dosing_frame_by_visit$bin_b_maintained_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_b_decrease_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit_lag_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_b_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_b_in_three_visits_is_decreased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_b_decrease_from_three_visits_ago)))
+
+#changes in bin c from three visits ago
+dosing_frame_by_visit$bin_c_increase_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_c_in_three_visits_is_increased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_c_increase_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_c_maintained_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_c_in_three_visits_is_maintained <-
+  lead(lead(lead(dosing_frame_by_visit$bin_c_maintained_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_c_decrease_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit_lag_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_c_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_c_in_three_visits_is_decreased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_c_decrease_from_three_visits_ago)))
+
+#changes in bin d from three visits ago
+dosing_frame_by_visit$bin_d_increase_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag_lag <
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_d_in_three_visits_is_increased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_d_increase_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_d_maintained_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag_lag ==
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_d_in_three_visits_is_maintained <-
+  lead(lead(lead(dosing_frame_by_visit$bin_d_maintained_from_three_visits_ago)))
+
+dosing_frame_by_visit$bin_d_decrease_from_three_visits_ago <-
+  ifelse(dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit_lag_lag_lag >
+           dosing_frame_by_visit$hydrocortisone_equivalent_bin_d_at_visit,
+         1,
+         0)
+dosing_frame_by_visit$bin_d_in_three_visits_is_decreased <-
+  lead(lead(lead(dosing_frame_by_visit$bin_d_decrease_from_three_visits_ago)))
+
+
+```
+
+
+
+```{r, missing data and marker summary statistics}
+steroid_profiles_17OHP_or_androstenedione <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)"  &
+           ARM!="Screen Failure"| 
+         PARAM=="Androstenedione/ SI (nmol/L)" &
+           ARM!="Screen Failure")
+freq(steroid_profiles_17OHP_or_androstenedione$ARM)
+
+steroid_profiles_17OHP <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)"  &
+           ARM!="Screen Failure")
+
+steroid_profiles_17OHP_efmody <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" &
+           ARM=="Chronocort" & 
+           AVISITN>1
+           )
+#check that
+freq(steroid_profiles_17OHP_efmody$AVISITN)
+
+steroid_profiles_17OHP_on_standard_therapy <-
+  subset(steroid_profiles, 
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" &
+           ARM=="Chronocort" & 
+           AVISITN==1 |  
+         PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" &
+           ARM=="Standard GC therapy" 
+           )
+freq(steroid_profiles_17OHP_on_standard_therapy$AVISITN)
+
+steroid_profiles_Androstenedione <-
+  subset(steroid_profiles,  
+         PARAM=="Androstenedione/ SI (nmol/L)"  &
+           ARM!="Screen Failure")
+
+steroid_profiles_Androstenedione_efmody <-
+  subset(steroid_profiles, 
+         PARAM=="Androstenedione/ SI (nmol/L)" &
+           ARM=="Chronocort" & 
+           AVISITN>1
+           )
+#check that
+freq(steroid_profiles_Androstenedione_efmody$AVISITN)
+
+steroid_profiles_Androstenedione_on_standard_therapy <-
+  subset(steroid_profiles, 
+         PARAM=="Androstenedione/ SI (nmol/L)" &
+           ARM=="Chronocort" & 
+           AVISITN==1 |  
+         PARAM=="Androstenedione/ SI (nmol/L)" &
+           ARM=="Standard GC therapy" 
+           )
+nrow(steroid_profiles_Androstenedione_on_standard_therapy )
+freq(steroid_profiles_Androstenedione_on_standard_therapy$AVISITN)
+
+
+steroid_profiles_17OHP_missing_imputed_by_average <- 
+  subset(steroid_profiles, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" & DTYPE=="AVERAGE")
+steroid_profiles_17OHP_missing_imputed_by_adjacent <- 
+  subset(steroid_profiles, PARAM=="17-hydroxyprogesterone/ SI (nmol/L)" & DTYPE=="ADJVAL")
+steroid_profiles_Androstenedione_missing_imputed_by_average <- 
+  subset(steroid_profiles, PARAM=="Androstenedione/ SI (nmol/L)" & DTYPE=="AVERAGE")
+steroid_profiles_Androstenedione_missing_imputed_by_adjacent <- 
+  subset(steroid_profiles, PARAM=="Androstenedione/ SI (nmol/L)" & DTYPE=="ADJVAL")
+
+sink("missing_profile_data_imputation_summaries.txt")
+freq(steroid_profiles_17OHP_or_androstenedione$DTYPE)
+freq(steroid_profiles_17OHP_missing_imputed_by_average$DTYPE)
+freq(steroid_profiles_17OHP_missing_imputed_by_adjacent$DTYPE)
+freq(steroid_profiles_Androstenedione_missing_imputed_by_average$DTYPE)
+freq(steroid_profiles_Androstenedione_missing_imputed_by_adjacent$DTYPE)
+descr(steroid_profiles_17OHP_missing_imputed_by_average$AVAL)
+descr(steroid_profiles_17OHP_missing_imputed_by_adjacent$AVAL)
+descr(steroid_profiles_Androstenedione_missing_imputed_by_average$AVAL)
+descr(steroid_profiles_Androstenedione_missing_imputed_by_adjacent$AVAL)
+sink()
+
+sink("marker_summary_statistics.txt")
+print("number of patients with markers whilst on standard therapy")
+print("note, this will include patients later on efmody because their first visit profiles are included")
+length(unique(steroid_profiles_17OHP_on_standard_therapy$id))
+print("number of patients with markers whilst on efmody")
+length(unique(steroid_profiles_17OHP_efmody$id))
+descr(steroid_profiles_17OHP$AVAL)
+descr(steroid_profiles_17OHP_on_standard_therapy$AVAL)
+descr(steroid_profiles_17OHP_efmody$AVAL)
+descr(steroid_profiles_Androstenedione$AVAL)
+descr(steroid_profiles_Androstenedione_on_standard_therapy$AVAL)
+descr(steroid_profiles_Androstenedione_efmody$AVAL)
+
+descr(steroid_profiles_17OHP$ln_value_nM)
+descr(steroid_profiles_17OHP_on_standard_therapy$ln_value_nM)
+descr(steroid_profiles_17OHP_efmody$ln_value_nM)
+descr(steroid_profiles_Androstenedione$ln_value_nM)
+descr(steroid_profiles_Androstenedione_on_standard_therapy$ln_value_nM)
+descr(steroid_profiles_Androstenedione_efmody$ln_value_nM)
+sink()
+```
+
+```{r, summarise drop out data}
+steroid_profiles_without_screen_failure <-
+  subset(steroid_profiles, ARM!="Screen Failure" & ARM!="Not Assigned")
+freq(steroid_profiles_without_screen_failure$ARM)
+freq(steroid_profiles_17OHP$ARM)
+frequency_of_patient_visits <- as.data.frame(freq(steroid_profiles_17OHP$id))
+max(steroid_profiles_17OHP$AVISITN)
+frequency_of_patient_visits$total_visits <-
+  frequency_of_patient_visits$Freq / 13
+freq(frequency_of_patient_visits$total_visits)
+
+```
+
+```{r, create testosterone measurements with appropriate id and id_visit columns for later joining}
+ADLB$id <- gsub(x=ADLB$USUBJID, pattern="/", replacement="_")
+ADLB$id_visit <- paste0(ADLB$id, "_", ADLB$AVISITN)
+
+testosterone_measurements <- subset(ADLB, PARAM=="Total testosterone/ Conventional (ng/dL)")
+#create a testosterone column
+testosterone_measurements$value_ngdL_Testosterone <- testosterone_measurements$AVAL
+#convert testosterone units to nmol/l to be consistent with normative data
+testosterone_measurements$value_nM_Testosterone <- 
+  testosterone_measurements$value_ngdL_Testosterone * 0.0347
+
+#log transform it
+testosterone_measurements$ln_value_nM_Testosterone <- log(testosterone_measurements$value_nM_Testosterone)
+
+```
+
+```{r, convert the time of measurement for testosterone}
+
+testosterone_measurements$time_of_test_minute <- 
+  (sub(testosterone_measurements$ATM, 
+       pattern="..:", 
+       replacement=""))
+
+testosterone_measurements$time_of_test_minute <- 
+  as.numeric(sub(testosterone_measurements$time_of_test_minute, 
+                 pattern=":..", 
+                 replacement=""))
+
+testosterone_measurements$time_of_test_hour <- 
+  as.numeric(gsub(testosterone_measurements$ATM, 
+                  pattern=":.*", 
+                  replacement=""))
+
+testosterone_measurements$decimal_time_of_test <-
+  testosterone_measurements$time_of_test_hour +
+  testosterone_measurements$time_of_test_minute/60
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_1")
+```

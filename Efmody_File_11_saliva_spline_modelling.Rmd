@@ -1,0 +1,3637 @@
+clear environment and load packages
+
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+```
+
+```{r, load in the single centre data for saliva}
+single_centre_saliva_data <- 
+  read.csv("./efmody_data_files_to_load/single_centre_DIUR-005_saliva.csv")
+```
+
+```{r, create consistent columns}
+#create id to be consistent
+single_centre_saliva_data$id <- 
+  paste0("DIUR-005_", 
+         gsub(single_centre_saliva_data$PATIENT, pattern="-", replacement="_"))
+#create id paste visit
+single_centre_saliva_data$id_paste_visit <-
+  paste0(single_centre_saliva_data$id, "_", single_centre_saliva_data$visit)
+#create just patient
+single_centre_saliva_data$patient <- 
+  gsub(single_centre_saliva_data$PATIENT, pattern="-", replacement="_")
+```
+
+```{r, assign ARM}
+#they've arranged the patients in two different columns in the excel file, just assign their arm here manually for speed
+single_centre_saliva_data$ARM <-
+  ifelse(single_centre_saliva_data$id=="DIUR-005_402_001" |
+         single_centre_saliva_data$id=="DIUR-005_402_002" |
+         single_centre_saliva_data$id=="DIUR-005_402_003" |
+         single_centre_saliva_data$id=="DIUR-005_402_004" |
+         single_centre_saliva_data$id=="DIUR-005_402_007" |
+         single_centre_saliva_data$id=="DIUR-005_402_010" |
+         single_centre_saliva_data$id=="DIUR-005_402_013",
+         "Standard GC therapy",
+         "Chronocort")
+
+
+single_centre_saliva_data$SEX <-
+  ifelse(single_centre_saliva_data$id=="DIUR-005_402_006" |
+         single_centre_saliva_data$id=="DIUR-005_402_007" |
+         single_centre_saliva_data$id=="DIUR-005_402_013",
+         "Male",
+         "Female")
+
+```
+
+```{r, take patient details out of the single centre data}
+single_centre_patient_details <-
+  unique(single_centre_saliva_data[,c(
+    "id",
+    "TREATMENT",
+    "ARM",
+    "SEX")])
+```
+
+```{r, rename the columns to sensible variables}
+single_centre_saliva_data <-
+  rename(single_centre_saliva_data, 
+       c("Sal_Testosterone"  = "T..pM.", 
+         "Sal_Androstenedione" = "A4..pM.",
+         "Sal_17OHP" = "X17OHProg..pM.",
+         "Sal_11OHA4" = "X11OHA4..pM.",
+         "Sal_11KT" = "X11KT..pM.")
+         )
+
+#ln transform everything in single_centre_saliva_data for later
+single_centre_saliva_data$ln_Sal_Testosterone <-
+  log(single_centre_saliva_data$Sal_Testosterone)
+single_centre_saliva_data$ln_Sal_Androstenedione <-
+  log(single_centre_saliva_data$Sal_Androstenedione)
+single_centre_saliva_data$ln_Sal_17OHP <-
+  log(single_centre_saliva_data$Sal_17OHP)
+single_centre_saliva_data$ln_Sal_11KT <-
+  log(single_centre_saliva_data$Sal_11KT)
+single_centre_saliva_data$ln_Sal_11OHA4 <-
+  log(single_centre_saliva_data$Sal_11OHA4)
+
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="15:00",
+         1,
+         NA)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="17:00",
+         2,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="19:00",
+         3,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="21:00",
+         4,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="23:00",
+         5,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="01:00",
+         6,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="03:00",
+         7,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="05:00",
+         8,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="07:00",
+         9,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="09:00",
+         10,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="11:00",
+         11,
+         single_centre_saliva_data$reading_number)
+single_centre_saliva_data$reading_number <-
+  ifelse(single_centre_saliva_data$TIME=="13:00",
+         12,
+         single_centre_saliva_data$reading_number)
+```
+
+```{r, create a long version of the single_centre saliva data}
+single_centre_saliva_data_long <-
+  pivot_longer(
+    single_centre_saliva_data,
+    cols=c("Sal_Testosterone",
+           "Sal_Androstenedione",
+           "Sal_17OHP",
+           "Sal_11OHA4",
+           "Sal_11KT"),
+    names_to="marker",
+    values_to="AVAL"
+  )
+```
+```{r}
+single_centre_saliva_data_long$ln_value_nM <- 
+  log(single_centre_saliva_data_long$AVAL)
+```
+
+```{r, spline loops for saliva markers plotted together, absolute scales}
+print("Note, you can only fit a spline model to four or more points. Therefore whether its worth imputing and then spline modelling is up for debate. Currently this only models 4 or more points")
+
+spline_knot_width <- 0.01
+
+#create something to bind all of our AUC's to
+salivary_auc_frame_flexible_degrees_of_freedom_long <- 
+  NULL
+
+#create our frames and lists to add to 
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom <- 
+  as.list(NULL)
+
+
+marker <- "Salivary"  
+marker_folder_name <- 
+  gsub(x=marker, 
+       pattern = " ", 
+       replacement="")
+
+for (each_patient in unique(single_centre_saliva_data_long$id)){
+#take out the data for that patient for the visit for each marker
+#First 17OHP  
+one_patient_17OHP_baseline_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_17OHP" &
+         VISIT=="Baseline"  )
+one_patient_17OHP_3M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_17OHP" &
+         VISIT=="3M"  )
+one_patient_17OHP_6M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_17OHP" &
+         VISIT=="6M"  )
+
+#Then Androstenedione  
+one_patient_Androstenedione_baseline_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_Androstenedione" &
+         VISIT=="Baseline"  )
+one_patient_Androstenedione_3M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_Androstenedione" &
+         VISIT=="3M"  )
+one_patient_Androstenedione_6M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_Androstenedione" &
+         VISIT=="6M"  )
+
+#Then Testosterone  
+one_patient_Testosterone_baseline_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_Testosterone" &
+         VISIT=="Baseline"  )
+one_patient_Testosterone_3M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_Testosterone" &
+         VISIT=="3M"  )
+one_patient_Testosterone_6M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_Testosterone" &
+         VISIT=="6M"  )
+
+
+#Then 11OHA4  
+one_patient_11OHA4_baseline_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_11OHA4" &
+         VISIT=="Baseline"  )
+one_patient_11OHA4_3M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_11OHA4" &
+         VISIT=="3M"  )
+one_patient_11OHA4_6M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_11OHA4" &
+         VISIT=="6M"  )
+
+#Then 11KT  
+one_patient_11KT_baseline_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_11KT" &
+         VISIT=="Baseline"  )
+one_patient_11KT_3M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_11KT" &
+         VISIT=="3M"  )
+one_patient_11KT_6M_visit <- 
+  subset(single_centre_saliva_data_long, 
+         id==each_patient &
+         !is.na(AVAL) &
+         marker=="Sal_11KT" &
+         VISIT=="6M"  )
+
+#take out the sex of the patient - due to missing data I just use the fact that I know these three to be male
+Sex_of_patient <- 
+  ifelse(each_patient=="DIUR-005_402_006" |
+         each_patient=="DIUR-005_402_007" |
+         each_patient=="DIUR-005_402_013",
+         "Male",
+         "Female")
+
+#here we set out  coefficient of determinations, that will be calculated below, to NA to facilitate them being approrpiately cleared within the loop
+coefficient_of_determination_17OHP_baseline_visit <- NA
+coefficient_of_determination_17OHP_3M_visit <- NA
+coefficient_of_determination_17OHP_6M_visit <- NA
+
+#############################################################
+##Sal_17OHP##################################################
+#############################################################
+#fit the spline model to 17OHP frmaes
+if(nrow(one_patient_17OHP_baseline_visit)>3){
+  
+spline_model_17OHP_baseline_visit <-  
+  smooth.spline(one_patient_17OHP_baseline_visit$reading_number,
+                one_patient_17OHP_baseline_visit$AVAL,
+                #take the number of rows of available points to assign the degrees of freedom
+                df=nrow(one_patient_17OHP_baseline_visit)) 
+
+#fit the spline model to the original data points
+one_patient_17OHP_baseline_visit$spline_model_17OHP_fit <-
+    predict(spline_model_17OHP_baseline_visit)$y
+
+#fit the first derivatives of the spline model to the original data points also
+one_patient_17OHP_baseline_visit$spline_model_17OHP_baseline_visit_first_derivative_fit <-
+    predict(spline_model_17OHP_baseline_visit, deriv=1)$y
+
+#fit the second derivatives of the spline model to the original data points also
+one_patient_17OHP_baseline_visit$spline_model_17OHP_baseline_visit_second_derivative_fit <-
+    predict(spline_model_17OHP_baseline_visit, deriv=2)$y
+
+#calculate residuals
+one_patient_17OHP_baseline_visit$spline_residual <- 
+  one_patient_17OHP_baseline_visit$AVAL - 
+  one_patient_17OHP_baseline_visit$spline_model_17OHP_fit
+
+#calculate standardised residuals
+one_patient_17OHP_baseline_visit$standardised_residual <- 
+  (one_patient_17OHP_baseline_visit$AVAL - 
+     one_patient_17OHP_baseline_visit$spline_model_17OHP_fit)/
+  (one_patient_17OHP_baseline_visit$spline_model_17OHP_fit^0.5)
+
+#calculate sum squared regression - the sum of the residuals squared
+sum_squared_regression_17OHP <- 
+  sum((one_patient_17OHP_baseline_visit$residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_17OHP_baseline_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_baseline_visit$AVAL - 
+     mean(one_patient_17OHP_baseline_visit$AVAL) ) ^ 2
+
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_17OHP <- 
+  sum(one_patient_17OHP_baseline_visit$observed_from_mean_squared_17OHP)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_17OHP_baseline_visit <- 
+  ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_17OHP_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_17OHP",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_17OHP_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_17OHP_baseline$y <- 
+  predict(spline_model_17OHP_baseline_visit, 
+          spline_model_fit_frame_17OHP_baseline$reading_number)$y
+
+#predict the first derivative
+spline_model_fit_frame_17OHP_baseline$first_derivative_y <- 
+  predict(spline_model_17OHP_baseline_visit, 
+          spline_model_fit_frame_17OHP_baseline$reading_number, 
+          deriv=1)$y
+
+#predict the second derivative
+spline_model_fit_frame_17OHP_baseline$second_derivative_y <- 
+  predict(spline_model_17OHP_baseline_visit, 
+          spline_model_fit_frame_17OHP_baseline$reading_number, 
+          deriv=2)$y
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_17OHP_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_17OHP_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_17OHP_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_17OHP_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_17OHP_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_17OHP_baseline <- 
+  sum(spline_model_fit_frame_17OHP_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_17OHP_baseline <- 
+  log(area_under_curve_17OHP_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_17OHP_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_17OHP",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_17OHP_baseline_visit),
+  auc = area_under_curve_17OHP_baseline,
+  ln_auc = ln_area_under_curve_17OHP_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_17OHP_baseline_visit)>0 & nrow(one_patient_17OHP_baseline_visit)<=3){
+  #fit the linear model
+  linear_model_17OHP_baseline <-  
+    lm(data=one_patient_17OHP_baseline_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_17OHP_baseline_visit$spline_model_17OHP_baseline <-
+    as.numeric(predict(linear_model_17OHP_baseline))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_17OHP_baseline_visit$spline_model_17OHP_baseline_first_derivative_fit <-
+    coef(linear_model_17OHP_baseline)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_17OHP_baseline_visit$spline_model_17OHP_baseline_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_17OHP_baseline_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_17OHP_baseline))
+  
+  #calculate standardised residuals by rstandard(linear_model_17OHP_baseline), but we just insert NA
+  one_patient_17OHP_baseline_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_17OHP <-
+    sum((one_patient_17OHP_baseline_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_17OHP_baseline_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_baseline_visit$AVAL - 
+     mean(one_patient_17OHP_baseline_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_17OHP <- 
+  sum(one_patient_17OHP_baseline_visit$observed_from_mean_squared_17OHP)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_17OHP_baseline <- 
+  ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_17OHP_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_17OHP",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_17OHP_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_17OHP_baseline$y <- 
+  as.numeric(predict(linear_model_17OHP_baseline, 
+          newdata=spline_model_fit_frame_17OHP_baseline))
+
+#predict the first derivative
+spline_model_fit_frame_17OHP_baseline$first_derivative_y <- 
+  coef(linear_model_17OHP_baseline)[2]
+
+#predict the second derivative
+spline_model_fit_frame_17OHP_baseline$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_17OHP_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_17OHP_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_17OHP_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_17OHP_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_17OHP_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_17OHP_baseline <- 
+  sum(spline_model_fit_frame_17OHP_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_17OHP_baseline <- 
+  log(area_under_curve_17OHP_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_17OHP_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_17OHP",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_17OHP_baseline_visit),
+  auc = area_under_curve_17OHP_baseline,
+  ln_auc = ln_area_under_curve_17OHP_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#do the same for the 3M visit
+if(nrow(one_patient_17OHP_3M_visit)>3){
+spline_model_17OHP_3M_visit <-  
+  smooth.spline(one_patient_17OHP_3M_visit$reading_number,
+                one_patient_17OHP_3M_visit$AVAL,
+                df=nrow(one_patient_17OHP_3M_visit)) 
+one_patient_17OHP_3M_visit$spline_model_17OHP_fit <-
+    predict(spline_model_17OHP_3M_visit)$y
+one_patient_17OHP_3M_visit$spline_model_17OHP_first_derivative_fit <-
+    predict(spline_model_17OHP_3M_visit, deriv=1)$y
+one_patient_17OHP_3M_visit$spline_model_17OHP_second_derivative_fit <-
+    predict(spline_model_17OHP_3M_visit, deriv=2)$y
+one_patient_17OHP_3M_visit$spline_residual <- 
+  one_patient_17OHP_3M_visit$AVAL - 
+  one_patient_17OHP_3M_visit$spline_model_17OHP_fit
+one_patient_17OHP_3M_visit$standardised_residual <- 
+  (one_patient_17OHP_3M_visit$AVAL - 
+     one_patient_17OHP_3M_visit$spline_model_17OHP_fit)/
+  (one_patient_17OHP_3M_visit$spline_model_17OHP_fit^0.5)
+sum_squared_regression_17OHP <- 
+  sum((one_patient_17OHP_3M_visit$residual)^2)
+one_patient_17OHP_3M_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_3M_visit$AVAL - 
+     mean(one_patient_17OHP_3M_visit$AVAL) ) ^ 2
+total_sum_of_squares_17OHP <- 
+  sum(one_patient_17OHP_3M_visit$observed_from_mean_squared_17OHP)
+coefficient_of_determination_17OHP_3M_visit <- 
+  ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+spline_model_fit_frame_17OHP_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_17OHP",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_17OHP_3M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_17OHP_3M_visit$y <- 
+  predict(spline_model_17OHP_3M_visit, 
+          spline_model_fit_frame_17OHP_3M_visit$reading_number)$y
+spline_model_fit_frame_17OHP_3M_visit$first_derivative_y <- 
+  predict(spline_model_17OHP_3M_visit, 
+          spline_model_fit_frame_17OHP_3M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_17OHP_3M_visit$second_derivative_y <- 
+  predict(spline_model_17OHP_3M_visit, 
+          spline_model_fit_frame_17OHP_3M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_17OHP_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_17OHP_3M_visit$y)
+spline_model_fit_frame_17OHP_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_17OHP_3M_visit$non_negative_y)
+spline_model_fit_frame_17OHP_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP_3M_visit$non_negative_y)/2
+area_under_curve_17OHP_3M_visit <- 
+  sum(spline_model_fit_frame_17OHP_3M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_17OHP_3M_visit <- 
+  log(area_under_curve_17OHP_3M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_17OHP_3M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_17OHP",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_17OHP_3M_visit),
+  auc = area_under_curve_17OHP_3M_visit,
+  ln_auc = ln_area_under_curve_17OHP_3M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+
+
+}
+
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_17OHP_3M_visit)>0 & nrow(one_patient_17OHP_3M_visit)<=3){
+  #fit the linear model
+  linear_model_17OHP_3M_visit <-  
+    lm(data=one_patient_17OHP_3M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_17OHP_3M_visit$spline_model_17OHP_3M_visit <-
+    as.numeric(predict(linear_model_17OHP_3M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_17OHP_3M_visit$spline_model_17OHP_3M_visit_first_derivative_fit <-
+    coef(linear_model_17OHP_3M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_17OHP_3M_visit$spline_model_17OHP_3M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_17OHP_3M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_17OHP_3M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_17OHP_3M_visit), but we just insert NA
+  one_patient_17OHP_3M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_17OHP <-
+    sum((one_patient_17OHP_3M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_17OHP_3M_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_3M_visit$AVAL - 
+     mean(one_patient_17OHP_3M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_17OHP <- 
+  sum(one_patient_17OHP_3M_visit$observed_from_mean_squared_17OHP)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_17OHP_3M_visit <- 
+  ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_17OHP_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_17OHP",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_17OHP_3M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_17OHP_3M_visit$y <- 
+  as.numeric(predict(linear_model_17OHP_3M_visit, 
+          newdata=spline_model_fit_frame_17OHP_3M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_17OHP_3M_visit$first_derivative_y <- 
+  coef(linear_model_17OHP_3M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_17OHP_3M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_17OHP_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_17OHP_3M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_17OHP_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_17OHP_3M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_17OHP_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP_3M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_17OHP_3M_visit <- 
+  sum(spline_model_fit_frame_17OHP_3M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_17OHP_3M_visit <- 
+  log(area_under_curve_17OHP_3M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_17OHP_3M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_17OHP",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_17OHP_3M_visit),
+  auc = area_under_curve_17OHP_3M_visit,
+  ln_auc = ln_area_under_curve_17OHP_3M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+if(nrow(one_patient_17OHP_6M_visit)>3){
+spline_model_17OHP_6M_visit <-  
+  smooth.spline(one_patient_17OHP_6M_visit$reading_number,
+                one_patient_17OHP_6M_visit$AVAL,
+                df=nrow(one_patient_17OHP_6M_visit)) 
+one_patient_17OHP_6M_visit$spline_model_17OHP_fit <-
+    predict(spline_model_17OHP_6M_visit)$y
+one_patient_17OHP_6M_visit$spline_model_17OHP_first_derivative_fit <-
+    predict(spline_model_17OHP_6M_visit, deriv=1)$y
+one_patient_17OHP_6M_visit$spline_model_17OHP_second_derivative_fit <-
+    predict(spline_model_17OHP_6M_visit, deriv=2)$y
+one_patient_17OHP_6M_visit$spline_residual <- 
+  one_patient_17OHP_6M_visit$AVAL - 
+  one_patient_17OHP_6M_visit$spline_model_17OHP_fit
+one_patient_17OHP_6M_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_6M_visit$AVAL - 
+     mean(one_patient_17OHP_6M_visit$AVAL) ) ^ 2
+total_sum_of_squares_17OHP <- 
+  sum(one_patient_17OHP_6M_visit$observed_from_mean_squared_17OHP)
+sum_squared_regression_17OHP <- 
+  sum((one_patient_17OHP_6M_visit$spline_residual)^2)
+coefficient_of_determination_17OHP_6M_visit <- 
+  ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+spline_model_fit_frame_17OHP_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_17OHP",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_17OHP_6M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_17OHP_6M_visit$y <- 
+  predict(spline_model_17OHP_6M_visit, 
+          spline_model_fit_frame_17OHP_6M_visit$reading_number)$y
+spline_model_fit_frame_17OHP_6M_visit$first_derivative_y <- 
+  predict(spline_model_17OHP_6M_visit, 
+          spline_model_fit_frame_17OHP_6M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_17OHP_6M_visit$second_derivative_y <- 
+  predict(spline_model_17OHP_6M_visit, 
+          spline_model_fit_frame_17OHP_6M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_17OHP_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_17OHP_6M_visit$y)
+spline_model_fit_frame_17OHP_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_17OHP_6M_visit$non_negative_y)
+spline_model_fit_frame_17OHP_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP_6M_visit$non_negative_y)/2
+area_under_curve_17OHP_6M_visit <- 
+  sum(spline_model_fit_frame_17OHP_6M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_17OHP_6M_visit <- 
+  log(area_under_curve_17OHP_6M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_17OHP_6M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_17OHP",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_17OHP_6M_visit),
+  auc = area_under_curve_17OHP_6M_visit,
+  ln_auc = ln_area_under_curve_17OHP_6M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_17OHP_6M_visit)>0 & nrow(one_patient_17OHP_6M_visit)<=3){
+  #fit the linear model
+  linear_model_17OHP_6M_visit <-  
+    lm(data=one_patient_17OHP_6M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_17OHP_6M_visit$spline_model_17OHP_6M_visit <-
+    as.numeric(predict(linear_model_17OHP_6M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_17OHP_6M_visit$spline_model_17OHP_6M_visit_first_derivative_fit <-
+    coef(linear_model_17OHP_6M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_17OHP_6M_visit$spline_model_17OHP_6M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_17OHP_6M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_17OHP_6M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_17OHP_6M_visit), but we just insert NA
+  one_patient_17OHP_6M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_17OHP <-
+    sum((one_patient_17OHP_6M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_17OHP_6M_visit$observed_from_mean_squared_17OHP <-
+  (one_patient_17OHP_6M_visit$AVAL - 
+     mean(one_patient_17OHP_6M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_17OHP <- 
+  sum(one_patient_17OHP_6M_visit$observed_from_mean_squared_17OHP)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_17OHP_6M_visit <- 
+  ifelse(total_sum_of_squares_17OHP==0,
+  1,
+  1 - (sum_squared_regression_17OHP/total_sum_of_squares_17OHP)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_17OHP_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_17OHP",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_17OHP_6M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_17OHP_6M_visit$y <- 
+  as.numeric(predict(linear_model_17OHP_6M_visit, 
+          newdata=spline_model_fit_frame_17OHP_6M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_17OHP_6M_visit$first_derivative_y <- 
+  coef(linear_model_17OHP_6M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_17OHP_6M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_17OHP_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_17OHP_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_17OHP_6M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_17OHP_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_17OHP_6M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_17OHP_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_17OHP_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_17OHP_6M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_17OHP_6M_visit <- 
+  sum(spline_model_fit_frame_17OHP_6M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_17OHP_6M_visit <- 
+  log(area_under_curve_17OHP_6M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_17OHP_6M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_17OHP",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_17OHP_6M_visit),
+  auc = area_under_curve_17OHP_6M_visit,
+  ln_auc = ln_area_under_curve_17OHP_6M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+#############################################################
+##Sal_Androstenedione##################################################
+#############################################################
+#fit the spline model to Androstenedione frmaes
+if(nrow(one_patient_Androstenedione_baseline_visit)>3){
+  
+spline_model_Androstenedione_baseline_visit <-  
+  smooth.spline(one_patient_Androstenedione_baseline_visit$reading_number,
+                one_patient_Androstenedione_baseline_visit$AVAL,
+                #take the number of rows of available points to assign the degrees of freedom
+                df=nrow(one_patient_Androstenedione_baseline_visit)) 
+
+#fit the spline model to the original data points
+one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_fit <-
+    predict(spline_model_Androstenedione_baseline_visit)$y
+
+#fit the first derivatives of the spline model to the original data points also
+one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_baseline_visit_first_derivative_fit <-
+    predict(spline_model_Androstenedione_baseline_visit, deriv=1)$y
+
+#fit the second derivatives of the spline model to the original data points also
+one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_baseline_visit_second_derivative_fit <-
+    predict(spline_model_Androstenedione_baseline_visit, deriv=2)$y
+
+#calculate residuals
+one_patient_Androstenedione_baseline_visit$spline_residual <- 
+  one_patient_Androstenedione_baseline_visit$AVAL - 
+  one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_fit
+
+#calculate standardised residuals
+one_patient_Androstenedione_baseline_visit$standardised_residual <- 
+  (one_patient_Androstenedione_baseline_visit$AVAL - 
+     one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_fit)/
+  (one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_fit^0.5)
+
+#calculate sum squared regression - the sum of the residuals squared
+sum_squared_regression_Androstenedione <- 
+  sum((one_patient_Androstenedione_baseline_visit$residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Androstenedione_baseline_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_baseline_visit$AVAL - 
+     mean(one_patient_Androstenedione_baseline_visit$AVAL) ) ^ 2
+
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_baseline_visit$observed_from_mean_squared_Androstenedione)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Androstenedione_baseline_visit <- 
+  ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Androstenedione_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Androstenedione",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_Androstenedione_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Androstenedione_baseline$y <- 
+  predict(spline_model_Androstenedione_baseline_visit, 
+          spline_model_fit_frame_Androstenedione_baseline$reading_number)$y
+
+#predict the first derivative
+spline_model_fit_frame_Androstenedione_baseline$first_derivative_y <- 
+  predict(spline_model_Androstenedione_baseline_visit, 
+          spline_model_fit_frame_Androstenedione_baseline$reading_number, 
+          deriv=1)$y
+
+#predict the second derivative
+spline_model_fit_frame_Androstenedione_baseline$second_derivative_y <- 
+  predict(spline_model_Androstenedione_baseline_visit, 
+          spline_model_fit_frame_Androstenedione_baseline$reading_number, 
+          deriv=2)$y
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Androstenedione_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_Androstenedione_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Androstenedione_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Androstenedione_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_Androstenedione_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Androstenedione_baseline <- 
+  sum(spline_model_fit_frame_Androstenedione_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Androstenedione_baseline <- 
+  log(area_under_curve_Androstenedione_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Androstenedione_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Androstenedione",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_Androstenedione_baseline_visit),
+  auc = area_under_curve_Androstenedione_baseline,
+  ln_auc = ln_area_under_curve_Androstenedione_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_Androstenedione_baseline_visit)>0 & nrow(one_patient_Androstenedione_baseline_visit)<=3){
+  #fit the linear model
+  linear_model_Androstenedione_baseline <-  
+    lm(data=one_patient_Androstenedione_baseline_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_baseline <-
+    as.numeric(predict(linear_model_Androstenedione_baseline))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_baseline_first_derivative_fit <-
+    coef(linear_model_Androstenedione_baseline)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_Androstenedione_baseline_visit$spline_model_Androstenedione_baseline_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_Androstenedione_baseline_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_Androstenedione_baseline))
+  
+  #calculate standardised residuals by rstandard(linear_model_Androstenedione_baseline), but we just insert NA
+  one_patient_Androstenedione_baseline_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_Androstenedione <-
+    sum((one_patient_Androstenedione_baseline_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Androstenedione_baseline_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_baseline_visit$AVAL - 
+     mean(one_patient_Androstenedione_baseline_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_baseline_visit$observed_from_mean_squared_Androstenedione)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Androstenedione_baseline <- 
+  ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Androstenedione_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Androstenedione",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_Androstenedione_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Androstenedione_baseline$y <- 
+  as.numeric(predict(linear_model_Androstenedione_baseline, 
+          newdata=spline_model_fit_frame_Androstenedione_baseline))
+
+#predict the first derivative
+spline_model_fit_frame_Androstenedione_baseline$first_derivative_y <- 
+  coef(linear_model_Androstenedione_baseline)[2]
+
+#predict the second derivative
+spline_model_fit_frame_Androstenedione_baseline$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Androstenedione_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_Androstenedione_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Androstenedione_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Androstenedione_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_Androstenedione_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Androstenedione_baseline <- 
+  sum(spline_model_fit_frame_Androstenedione_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Androstenedione_baseline <- 
+  log(area_under_curve_Androstenedione_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Androstenedione_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Androstenedione",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_Androstenedione_baseline_visit),
+  auc = area_under_curve_Androstenedione_baseline,
+  ln_auc = ln_area_under_curve_Androstenedione_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#do the same for the 3M visit
+if(nrow(one_patient_Androstenedione_3M_visit)>3){
+spline_model_Androstenedione_3M_visit <-  
+  smooth.spline(one_patient_Androstenedione_3M_visit$reading_number,
+                one_patient_Androstenedione_3M_visit$AVAL,
+                df=nrow(one_patient_Androstenedione_3M_visit)) 
+one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_fit <-
+    predict(spline_model_Androstenedione_3M_visit)$y
+one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_first_derivative_fit <-
+    predict(spline_model_Androstenedione_3M_visit, deriv=1)$y
+one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_second_derivative_fit <-
+    predict(spline_model_Androstenedione_3M_visit, deriv=2)$y
+one_patient_Androstenedione_3M_visit$spline_residual <- 
+  one_patient_Androstenedione_3M_visit$AVAL - 
+  one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_fit
+one_patient_Androstenedione_3M_visit$standardised_residual <- 
+  (one_patient_Androstenedione_3M_visit$AVAL - 
+     one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_fit)/
+  (one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_fit^0.5)
+sum_squared_regression_Androstenedione <- 
+  sum((one_patient_Androstenedione_3M_visit$residual)^2)
+one_patient_Androstenedione_3M_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_3M_visit$AVAL - 
+     mean(one_patient_Androstenedione_3M_visit$AVAL) ) ^ 2
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_3M_visit$observed_from_mean_squared_Androstenedione)
+coefficient_of_determination_Androstenedione_3M_visit <- 
+  ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+spline_model_fit_frame_Androstenedione_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Androstenedione",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_Androstenedione_3M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_Androstenedione_3M_visit$y <- 
+  predict(spline_model_Androstenedione_3M_visit, 
+          spline_model_fit_frame_Androstenedione_3M_visit$reading_number)$y
+spline_model_fit_frame_Androstenedione_3M_visit$first_derivative_y <- 
+  predict(spline_model_Androstenedione_3M_visit, 
+          spline_model_fit_frame_Androstenedione_3M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_Androstenedione_3M_visit$second_derivative_y <- 
+  predict(spline_model_Androstenedione_3M_visit, 
+          spline_model_fit_frame_Androstenedione_3M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_Androstenedione_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Androstenedione_3M_visit$y)
+spline_model_fit_frame_Androstenedione_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione_3M_visit$non_negative_y)
+spline_model_fit_frame_Androstenedione_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Androstenedione_3M_visit$non_negative_y)/2
+area_under_curve_Androstenedione_3M_visit <- 
+  sum(spline_model_fit_frame_Androstenedione_3M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_Androstenedione_3M_visit <- 
+  log(area_under_curve_Androstenedione_3M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Androstenedione_3M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Androstenedione",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_Androstenedione_3M_visit),
+  auc = area_under_curve_Androstenedione_3M_visit,
+  ln_auc = ln_area_under_curve_Androstenedione_3M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+
+
+}
+
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_Androstenedione_3M_visit)>0 & nrow(one_patient_Androstenedione_3M_visit)<=3){
+  #fit the linear model
+  linear_model_Androstenedione_3M_visit <-  
+    lm(data=one_patient_Androstenedione_3M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_3M_visit <-
+    as.numeric(predict(linear_model_Androstenedione_3M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_3M_visit_first_derivative_fit <-
+    coef(linear_model_Androstenedione_3M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_Androstenedione_3M_visit$spline_model_Androstenedione_3M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_Androstenedione_3M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_Androstenedione_3M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_Androstenedione_3M_visit), but we just insert NA
+  one_patient_Androstenedione_3M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_Androstenedione <-
+    sum((one_patient_Androstenedione_3M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Androstenedione_3M_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_3M_visit$AVAL - 
+     mean(one_patient_Androstenedione_3M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_3M_visit$observed_from_mean_squared_Androstenedione)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Androstenedione_3M_visit <- 
+  ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Androstenedione_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Androstenedione",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_Androstenedione_3M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Androstenedione_3M_visit$y <- 
+  as.numeric(predict(linear_model_Androstenedione_3M_visit, 
+          newdata=spline_model_fit_frame_Androstenedione_3M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_Androstenedione_3M_visit$first_derivative_y <- 
+  coef(linear_model_Androstenedione_3M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_Androstenedione_3M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Androstenedione_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Androstenedione_3M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Androstenedione_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione_3M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Androstenedione_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Androstenedione_3M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Androstenedione_3M_visit <- 
+  sum(spline_model_fit_frame_Androstenedione_3M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Androstenedione_3M_visit <- 
+  log(area_under_curve_Androstenedione_3M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Androstenedione_3M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Androstenedione",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_Androstenedione_3M_visit),
+  auc = area_under_curve_Androstenedione_3M_visit,
+  ln_auc = ln_area_under_curve_Androstenedione_3M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+if(nrow(one_patient_Androstenedione_6M_visit)>3){
+spline_model_Androstenedione_6M_visit <-  
+  smooth.spline(one_patient_Androstenedione_6M_visit$reading_number,
+                one_patient_Androstenedione_6M_visit$AVAL,
+                df=nrow(one_patient_Androstenedione_6M_visit)) 
+one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_fit <-
+    predict(spline_model_Androstenedione_6M_visit)$y
+one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_first_derivative_fit <-
+    predict(spline_model_Androstenedione_6M_visit, deriv=1)$y
+one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_second_derivative_fit <-
+    predict(spline_model_Androstenedione_6M_visit, deriv=2)$y
+one_patient_Androstenedione_6M_visit$spline_residual <- 
+  one_patient_Androstenedione_6M_visit$AVAL - 
+  one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_fit
+one_patient_Androstenedione_6M_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_6M_visit$AVAL - 
+     mean(one_patient_Androstenedione_6M_visit$AVAL) ) ^ 2
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_6M_visit$observed_from_mean_squared_Androstenedione)
+sum_squared_regression_Androstenedione <- 
+  sum((one_patient_Androstenedione_6M_visit$spline_residual)^2)
+coefficient_of_determination_Androstenedione_6M_visit <- 
+  ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+spline_model_fit_frame_Androstenedione_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Androstenedione",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_Androstenedione_6M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_Androstenedione_6M_visit$y <- 
+  predict(spline_model_Androstenedione_6M_visit, 
+          spline_model_fit_frame_Androstenedione_6M_visit$reading_number)$y
+spline_model_fit_frame_Androstenedione_6M_visit$first_derivative_y <- 
+  predict(spline_model_Androstenedione_6M_visit, 
+          spline_model_fit_frame_Androstenedione_6M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_Androstenedione_6M_visit$second_derivative_y <- 
+  predict(spline_model_Androstenedione_6M_visit, 
+          spline_model_fit_frame_Androstenedione_6M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_Androstenedione_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Androstenedione_6M_visit$y)
+spline_model_fit_frame_Androstenedione_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione_6M_visit$non_negative_y)
+spline_model_fit_frame_Androstenedione_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Androstenedione_6M_visit$non_negative_y)/2
+area_under_curve_Androstenedione_6M_visit <- 
+  sum(spline_model_fit_frame_Androstenedione_6M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_Androstenedione_6M_visit <- 
+  log(area_under_curve_Androstenedione_6M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Androstenedione_6M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Androstenedione",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_Androstenedione_6M_visit),
+  auc = area_under_curve_Androstenedione_6M_visit,
+  ln_auc = ln_area_under_curve_Androstenedione_6M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_Androstenedione_6M_visit)>0 & nrow(one_patient_Androstenedione_6M_visit)<=3){
+  #fit the linear model
+  linear_model_Androstenedione_6M_visit <-  
+    lm(data=one_patient_Androstenedione_6M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_6M_visit <-
+    as.numeric(predict(linear_model_Androstenedione_6M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_6M_visit_first_derivative_fit <-
+    coef(linear_model_Androstenedione_6M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_Androstenedione_6M_visit$spline_model_Androstenedione_6M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_Androstenedione_6M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_Androstenedione_6M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_Androstenedione_6M_visit), but we just insert NA
+  one_patient_Androstenedione_6M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_Androstenedione <-
+    sum((one_patient_Androstenedione_6M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Androstenedione_6M_visit$observed_from_mean_squared_Androstenedione <-
+  (one_patient_Androstenedione_6M_visit$AVAL - 
+     mean(one_patient_Androstenedione_6M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Androstenedione <- 
+  sum(one_patient_Androstenedione_6M_visit$observed_from_mean_squared_Androstenedione)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Androstenedione_6M_visit <- 
+  ifelse(total_sum_of_squares_Androstenedione==0,
+  1,
+  1 - (sum_squared_regression_Androstenedione/total_sum_of_squares_Androstenedione)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Androstenedione_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Androstenedione",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_Androstenedione_6M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Androstenedione_6M_visit$y <- 
+  as.numeric(predict(linear_model_Androstenedione_6M_visit, 
+          newdata=spline_model_fit_frame_Androstenedione_6M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_Androstenedione_6M_visit$first_derivative_y <- 
+  coef(linear_model_Androstenedione_6M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_Androstenedione_6M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Androstenedione_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Androstenedione_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Androstenedione_6M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Androstenedione_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Androstenedione_6M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Androstenedione_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Androstenedione_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Androstenedione_6M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Androstenedione_6M_visit <- 
+  sum(spline_model_fit_frame_Androstenedione_6M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Androstenedione_6M_visit <- 
+  log(area_under_curve_Androstenedione_6M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Androstenedione_6M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Androstenedione",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_Androstenedione_6M_visit),
+  auc = area_under_curve_Androstenedione_6M_visit,
+  ln_auc = ln_area_under_curve_Androstenedione_6M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+
+#############################################################
+##Sal_Testosterone##################################################
+#############################################################
+#fit the spline model to Testosterone frmaes
+if(nrow(one_patient_Testosterone_baseline_visit)>3){
+  
+spline_model_Testosterone_baseline_visit <-  
+  smooth.spline(one_patient_Testosterone_baseline_visit$reading_number,
+                one_patient_Testosterone_baseline_visit$AVAL,
+                #take the number of rows of available points to assign the degrees of freedom
+                df=nrow(one_patient_Testosterone_baseline_visit)) 
+
+#fit the spline model to the original data points
+one_patient_Testosterone_baseline_visit$spline_model_Testosterone_fit <-
+    predict(spline_model_Testosterone_baseline_visit)$y
+
+#fit the first derivatives of the spline model to the original data points also
+one_patient_Testosterone_baseline_visit$spline_model_Testosterone_baseline_visit_first_derivative_fit <-
+    predict(spline_model_Testosterone_baseline_visit, deriv=1)$y
+
+#fit the second derivatives of the spline model to the original data points also
+one_patient_Testosterone_baseline_visit$spline_model_Testosterone_baseline_visit_second_derivative_fit <-
+    predict(spline_model_Testosterone_baseline_visit, deriv=2)$y
+
+#calculate residuals
+one_patient_Testosterone_baseline_visit$spline_residual <- 
+  one_patient_Testosterone_baseline_visit$AVAL - 
+  one_patient_Testosterone_baseline_visit$spline_model_Testosterone_fit
+
+#calculate standardised residuals
+one_patient_Testosterone_baseline_visit$standardised_residual <- 
+  (one_patient_Testosterone_baseline_visit$AVAL - 
+     one_patient_Testosterone_baseline_visit$spline_model_Testosterone_fit)/
+  (one_patient_Testosterone_baseline_visit$spline_model_Testosterone_fit^0.5)
+
+#calculate sum squared regression - the sum of the residuals squared
+sum_squared_regression_Testosterone <- 
+  sum((one_patient_Testosterone_baseline_visit$residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Testosterone_baseline_visit$observed_from_mean_squared_Testosterone <-
+  (one_patient_Testosterone_baseline_visit$AVAL - 
+     mean(one_patient_Testosterone_baseline_visit$AVAL) ) ^ 2
+
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Testosterone <- 
+  sum(one_patient_Testosterone_baseline_visit$observed_from_mean_squared_Testosterone)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Testosterone_baseline_visit <- 
+  ifelse(total_sum_of_squares_Testosterone==0,
+  1,
+  1 - (sum_squared_regression_Testosterone/total_sum_of_squares_Testosterone)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Testosterone_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Testosterone",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_Testosterone_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Testosterone_baseline$y <- 
+  predict(spline_model_Testosterone_baseline_visit, 
+          spline_model_fit_frame_Testosterone_baseline$reading_number)$y
+
+#predict the first derivative
+spline_model_fit_frame_Testosterone_baseline$first_derivative_y <- 
+  predict(spline_model_Testosterone_baseline_visit, 
+          spline_model_fit_frame_Testosterone_baseline$reading_number, 
+          deriv=1)$y
+
+#predict the second derivative
+spline_model_fit_frame_Testosterone_baseline$second_derivative_y <- 
+  predict(spline_model_Testosterone_baseline_visit, 
+          spline_model_fit_frame_Testosterone_baseline$reading_number, 
+          deriv=2)$y
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Testosterone_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Testosterone_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_Testosterone_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Testosterone_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Testosterone_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Testosterone_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Testosterone_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_Testosterone_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Testosterone_baseline <- 
+  sum(spline_model_fit_frame_Testosterone_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Testosterone_baseline <- 
+  log(area_under_curve_Testosterone_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Testosterone_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Testosterone",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_Testosterone_baseline_visit),
+  auc = area_under_curve_Testosterone_baseline,
+  ln_auc = ln_area_under_curve_Testosterone_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_Testosterone_baseline_visit)>0 & nrow(one_patient_Testosterone_baseline_visit)<=3){
+  #fit the linear model
+  linear_model_Testosterone_baseline <-  
+    lm(data=one_patient_Testosterone_baseline_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_Testosterone_baseline_visit$spline_model_Testosterone_baseline <-
+    as.numeric(predict(linear_model_Testosterone_baseline))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_Testosterone_baseline_visit$spline_model_Testosterone_baseline_first_derivative_fit <-
+    coef(linear_model_Testosterone_baseline)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_Testosterone_baseline_visit$spline_model_Testosterone_baseline_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_Testosterone_baseline_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_Testosterone_baseline))
+  
+  #calculate standardised residuals by rstandard(linear_model_Testosterone_baseline), but we just insert NA
+  one_patient_Testosterone_baseline_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_Testosterone <-
+    sum((one_patient_Testosterone_baseline_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Testosterone_baseline_visit$observed_from_mean_squared_Testosterone <-
+  (one_patient_Testosterone_baseline_visit$AVAL - 
+     mean(one_patient_Testosterone_baseline_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Testosterone <- 
+  sum(one_patient_Testosterone_baseline_visit$observed_from_mean_squared_Testosterone)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Testosterone_baseline <- 
+  ifelse(total_sum_of_squares_Testosterone==0,
+  1,
+  1 - (sum_squared_regression_Testosterone/total_sum_of_squares_Testosterone)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Testosterone_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Testosterone",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_Testosterone_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Testosterone_baseline$y <- 
+  as.numeric(predict(linear_model_Testosterone_baseline, 
+          newdata=spline_model_fit_frame_Testosterone_baseline))
+
+#predict the first derivative
+spline_model_fit_frame_Testosterone_baseline$first_derivative_y <- 
+  coef(linear_model_Testosterone_baseline)[2]
+
+#predict the second derivative
+spline_model_fit_frame_Testosterone_baseline$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Testosterone_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Testosterone_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_Testosterone_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Testosterone_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Testosterone_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Testosterone_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Testosterone_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_Testosterone_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Testosterone_baseline <- 
+  sum(spline_model_fit_frame_Testosterone_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Testosterone_baseline <- 
+  log(area_under_curve_Testosterone_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Testosterone_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Testosterone",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_Testosterone_baseline_visit),
+  auc = area_under_curve_Testosterone_baseline,
+  ln_auc = ln_area_under_curve_Testosterone_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#do the same for the 3M visit
+if(nrow(one_patient_Testosterone_3M_visit)>3){
+spline_model_Testosterone_3M_visit <-  
+  smooth.spline(one_patient_Testosterone_3M_visit$reading_number,
+                one_patient_Testosterone_3M_visit$AVAL,
+                df=nrow(one_patient_Testosterone_3M_visit)) 
+one_patient_Testosterone_3M_visit$spline_model_Testosterone_fit <-
+    predict(spline_model_Testosterone_3M_visit)$y
+one_patient_Testosterone_3M_visit$spline_model_Testosterone_first_derivative_fit <-
+    predict(spline_model_Testosterone_3M_visit, deriv=1)$y
+one_patient_Testosterone_3M_visit$spline_model_Testosterone_second_derivative_fit <-
+    predict(spline_model_Testosterone_3M_visit, deriv=2)$y
+one_patient_Testosterone_3M_visit$spline_residual <- 
+  one_patient_Testosterone_3M_visit$AVAL - 
+  one_patient_Testosterone_3M_visit$spline_model_Testosterone_fit
+one_patient_Testosterone_3M_visit$standardised_residual <- 
+  (one_patient_Testosterone_3M_visit$AVAL - 
+     one_patient_Testosterone_3M_visit$spline_model_Testosterone_fit)/
+  (one_patient_Testosterone_3M_visit$spline_model_Testosterone_fit^0.5)
+sum_squared_regression_Testosterone <- 
+  sum((one_patient_Testosterone_3M_visit$residual)^2)
+one_patient_Testosterone_3M_visit$observed_from_mean_squared_Testosterone <-
+  (one_patient_Testosterone_3M_visit$AVAL - 
+     mean(one_patient_Testosterone_3M_visit$AVAL) ) ^ 2
+total_sum_of_squares_Testosterone <- 
+  sum(one_patient_Testosterone_3M_visit$observed_from_mean_squared_Testosterone)
+coefficient_of_determination_Testosterone_3M_visit <- 
+  ifelse(total_sum_of_squares_Testosterone==0,
+  1,
+  1 - (sum_squared_regression_Testosterone/total_sum_of_squares_Testosterone)
+  )
+spline_model_fit_frame_Testosterone_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Testosterone",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_Testosterone_3M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_Testosterone_3M_visit$y <- 
+  predict(spline_model_Testosterone_3M_visit, 
+          spline_model_fit_frame_Testosterone_3M_visit$reading_number)$y
+spline_model_fit_frame_Testosterone_3M_visit$first_derivative_y <- 
+  predict(spline_model_Testosterone_3M_visit, 
+          spline_model_fit_frame_Testosterone_3M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_Testosterone_3M_visit$second_derivative_y <- 
+  predict(spline_model_Testosterone_3M_visit, 
+          spline_model_fit_frame_Testosterone_3M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_Testosterone_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Testosterone_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Testosterone_3M_visit$y)
+spline_model_fit_frame_Testosterone_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Testosterone_3M_visit$non_negative_y)
+spline_model_fit_frame_Testosterone_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Testosterone_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Testosterone_3M_visit$non_negative_y)/2
+area_under_curve_Testosterone_3M_visit <- 
+  sum(spline_model_fit_frame_Testosterone_3M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_Testosterone_3M_visit <- 
+  log(area_under_curve_Testosterone_3M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Testosterone_3M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Testosterone",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_Testosterone_3M_visit),
+  auc = area_under_curve_Testosterone_3M_visit,
+  ln_auc = ln_area_under_curve_Testosterone_3M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+
+
+}
+
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_Testosterone_3M_visit)>0 & nrow(one_patient_Testosterone_3M_visit)<=3){
+  #fit the linear model
+  linear_model_Testosterone_3M_visit <-  
+    lm(data=one_patient_Testosterone_3M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_Testosterone_3M_visit$spline_model_Testosterone_3M_visit <-
+    as.numeric(predict(linear_model_Testosterone_3M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_Testosterone_3M_visit$spline_model_Testosterone_3M_visit_first_derivative_fit <-
+    coef(linear_model_Testosterone_3M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_Testosterone_3M_visit$spline_model_Testosterone_3M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_Testosterone_3M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_Testosterone_3M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_Testosterone_3M_visit), but we just insert NA
+  one_patient_Testosterone_3M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_Testosterone <-
+    sum((one_patient_Testosterone_3M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Testosterone_3M_visit$observed_from_mean_squared_Testosterone <-
+  (one_patient_Testosterone_3M_visit$AVAL - 
+     mean(one_patient_Testosterone_3M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Testosterone <- 
+  sum(one_patient_Testosterone_3M_visit$observed_from_mean_squared_Testosterone)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Testosterone_3M_visit <- 
+  ifelse(total_sum_of_squares_Testosterone==0,
+  1,
+  1 - (sum_squared_regression_Testosterone/total_sum_of_squares_Testosterone)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Testosterone_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Testosterone",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_Testosterone_3M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Testosterone_3M_visit$y <- 
+  as.numeric(predict(linear_model_Testosterone_3M_visit, 
+          newdata=spline_model_fit_frame_Testosterone_3M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_Testosterone_3M_visit$first_derivative_y <- 
+  coef(linear_model_Testosterone_3M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_Testosterone_3M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Testosterone_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Testosterone_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Testosterone_3M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Testosterone_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Testosterone_3M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Testosterone_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Testosterone_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Testosterone_3M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Testosterone_3M_visit <- 
+  sum(spline_model_fit_frame_Testosterone_3M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Testosterone_3M_visit <- 
+  log(area_under_curve_Testosterone_3M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Testosterone_3M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Testosterone",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_Testosterone_3M_visit),
+  auc = area_under_curve_Testosterone_3M_visit,
+  ln_auc = ln_area_under_curve_Testosterone_3M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+if(nrow(one_patient_Testosterone_6M_visit)>3){
+spline_model_Testosterone_6M_visit <-  
+  smooth.spline(one_patient_Testosterone_6M_visit$reading_number,
+                one_patient_Testosterone_6M_visit$AVAL,
+                df=nrow(one_patient_Testosterone_6M_visit)) 
+one_patient_Testosterone_6M_visit$spline_model_Testosterone_fit <-
+    predict(spline_model_Testosterone_6M_visit)$y
+one_patient_Testosterone_6M_visit$spline_model_Testosterone_first_derivative_fit <-
+    predict(spline_model_Testosterone_6M_visit, deriv=1)$y
+one_patient_Testosterone_6M_visit$spline_model_Testosterone_second_derivative_fit <-
+    predict(spline_model_Testosterone_6M_visit, deriv=2)$y
+one_patient_Testosterone_6M_visit$spline_residual <- 
+  one_patient_Testosterone_6M_visit$AVAL - 
+  one_patient_Testosterone_6M_visit$spline_model_Testosterone_fit
+one_patient_Testosterone_6M_visit$observed_from_mean_squared_Testosterone <-
+  (one_patient_Testosterone_6M_visit$AVAL - 
+     mean(one_patient_Testosterone_6M_visit$AVAL) ) ^ 2
+total_sum_of_squares_Testosterone <- 
+  sum(one_patient_Testosterone_6M_visit$observed_from_mean_squared_Testosterone)
+sum_squared_regression_Testosterone <- 
+  sum((one_patient_Testosterone_6M_visit$spline_residual)^2)
+coefficient_of_determination_Testosterone_6M_visit <- 
+  ifelse(total_sum_of_squares_Testosterone==0,
+  1,
+  1 - (sum_squared_regression_Testosterone/total_sum_of_squares_Testosterone)
+  )
+spline_model_fit_frame_Testosterone_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Testosterone",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_Testosterone_6M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_Testosterone_6M_visit$y <- 
+  predict(spline_model_Testosterone_6M_visit, 
+          spline_model_fit_frame_Testosterone_6M_visit$reading_number)$y
+spline_model_fit_frame_Testosterone_6M_visit$first_derivative_y <- 
+  predict(spline_model_Testosterone_6M_visit, 
+          spline_model_fit_frame_Testosterone_6M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_Testosterone_6M_visit$second_derivative_y <- 
+  predict(spline_model_Testosterone_6M_visit, 
+          spline_model_fit_frame_Testosterone_6M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_Testosterone_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Testosterone_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Testosterone_6M_visit$y)
+spline_model_fit_frame_Testosterone_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Testosterone_6M_visit$non_negative_y)
+spline_model_fit_frame_Testosterone_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Testosterone_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Testosterone_6M_visit$non_negative_y)/2
+area_under_curve_Testosterone_6M_visit <- 
+  sum(spline_model_fit_frame_Testosterone_6M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_Testosterone_6M_visit <- 
+  log(area_under_curve_Testosterone_6M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Testosterone_6M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Testosterone",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_Testosterone_6M_visit),
+  auc = area_under_curve_Testosterone_6M_visit,
+  ln_auc = ln_area_under_curve_Testosterone_6M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_Testosterone_6M_visit)>0 & nrow(one_patient_Testosterone_6M_visit)<=3){
+  #fit the linear model
+  linear_model_Testosterone_6M_visit <-  
+    lm(data=one_patient_Testosterone_6M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_Testosterone_6M_visit$spline_model_Testosterone_6M_visit <-
+    as.numeric(predict(linear_model_Testosterone_6M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_Testosterone_6M_visit$spline_model_Testosterone_6M_visit_first_derivative_fit <-
+    coef(linear_model_Testosterone_6M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_Testosterone_6M_visit$spline_model_Testosterone_6M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_Testosterone_6M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_Testosterone_6M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_Testosterone_6M_visit), but we just insert NA
+  one_patient_Testosterone_6M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_Testosterone <-
+    sum((one_patient_Testosterone_6M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_Testosterone_6M_visit$observed_from_mean_squared_Testosterone <-
+  (one_patient_Testosterone_6M_visit$AVAL - 
+     mean(one_patient_Testosterone_6M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_Testosterone <- 
+  sum(one_patient_Testosterone_6M_visit$observed_from_mean_squared_Testosterone)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_Testosterone_6M_visit <- 
+  ifelse(total_sum_of_squares_Testosterone==0,
+  1,
+  1 - (sum_squared_regression_Testosterone/total_sum_of_squares_Testosterone)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_Testosterone_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_Testosterone",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_Testosterone_6M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_Testosterone_6M_visit$y <- 
+  as.numeric(predict(linear_model_Testosterone_6M_visit, 
+          newdata=spline_model_fit_frame_Testosterone_6M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_Testosterone_6M_visit$first_derivative_y <- 
+  coef(linear_model_Testosterone_6M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_Testosterone_6M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_Testosterone_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_Testosterone_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_Testosterone_6M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_Testosterone_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_Testosterone_6M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_Testosterone_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_Testosterone_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_Testosterone_6M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_Testosterone_6M_visit <- 
+  sum(spline_model_fit_frame_Testosterone_6M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_Testosterone_6M_visit <- 
+  log(area_under_curve_Testosterone_6M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_Testosterone_6M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_Testosterone",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_Testosterone_6M_visit),
+  auc = area_under_curve_Testosterone_6M_visit,
+  ln_auc = ln_area_under_curve_Testosterone_6M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#############################################################
+##Sal_11OHA4##################################################
+#############################################################
+#fit the spline model to 11OHA4 frmaes
+if(nrow(one_patient_11OHA4_baseline_visit)>3){
+  
+spline_model_11OHA4_baseline_visit <-  
+  smooth.spline(one_patient_11OHA4_baseline_visit$reading_number,
+                one_patient_11OHA4_baseline_visit$AVAL,
+                #take the number of rows of available points to assign the degrees of freedom
+                df=nrow(one_patient_11OHA4_baseline_visit)) 
+
+#fit the spline model to the original data points
+one_patient_11OHA4_baseline_visit$spline_model_11OHA4_fit <-
+    predict(spline_model_11OHA4_baseline_visit)$y
+
+#fit the first derivatives of the spline model to the original data points also
+one_patient_11OHA4_baseline_visit$spline_model_11OHA4_baseline_visit_first_derivative_fit <-
+    predict(spline_model_11OHA4_baseline_visit, deriv=1)$y
+
+#fit the second derivatives of the spline model to the original data points also
+one_patient_11OHA4_baseline_visit$spline_model_11OHA4_baseline_visit_second_derivative_fit <-
+    predict(spline_model_11OHA4_baseline_visit, deriv=2)$y
+
+#calculate residuals
+one_patient_11OHA4_baseline_visit$spline_residual <- 
+  one_patient_11OHA4_baseline_visit$AVAL - 
+  one_patient_11OHA4_baseline_visit$spline_model_11OHA4_fit
+
+#calculate standardised residuals
+one_patient_11OHA4_baseline_visit$standardised_residual <- 
+  (one_patient_11OHA4_baseline_visit$AVAL - 
+     one_patient_11OHA4_baseline_visit$spline_model_11OHA4_fit)/
+  (one_patient_11OHA4_baseline_visit$spline_model_11OHA4_fit^0.5)
+
+#calculate sum squared regression - the sum of the residuals squared
+sum_squared_regression_11OHA4 <- 
+  sum((one_patient_11OHA4_baseline_visit$residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11OHA4_baseline_visit$observed_from_mean_squared_11OHA4 <-
+  (one_patient_11OHA4_baseline_visit$AVAL - 
+     mean(one_patient_11OHA4_baseline_visit$AVAL) ) ^ 2
+
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11OHA4 <- 
+  sum(one_patient_11OHA4_baseline_visit$observed_from_mean_squared_11OHA4)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11OHA4_baseline_visit <- 
+  ifelse(total_sum_of_squares_11OHA4==0,
+  1,
+  1 - (sum_squared_regression_11OHA4/total_sum_of_squares_11OHA4)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11OHA4_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11OHA4",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_11OHA4_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11OHA4_baseline$y <- 
+  predict(spline_model_11OHA4_baseline_visit, 
+          spline_model_fit_frame_11OHA4_baseline$reading_number)$y
+
+#predict the first derivative
+spline_model_fit_frame_11OHA4_baseline$first_derivative_y <- 
+  predict(spline_model_11OHA4_baseline_visit, 
+          spline_model_fit_frame_11OHA4_baseline$reading_number, 
+          deriv=1)$y
+
+#predict the second derivative
+spline_model_fit_frame_11OHA4_baseline$second_derivative_y <- 
+  predict(spline_model_11OHA4_baseline_visit, 
+          spline_model_fit_frame_11OHA4_baseline$reading_number, 
+          deriv=2)$y
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11OHA4_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11OHA4_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_11OHA4_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11OHA4_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11OHA4_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11OHA4_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11OHA4_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_11OHA4_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11OHA4_baseline <- 
+  sum(spline_model_fit_frame_11OHA4_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11OHA4_baseline <- 
+  log(area_under_curve_11OHA4_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11OHA4_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11OHA4",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_11OHA4_baseline_visit),
+  auc = area_under_curve_11OHA4_baseline,
+  ln_auc = ln_area_under_curve_11OHA4_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_11OHA4_baseline_visit)>0 & nrow(one_patient_11OHA4_baseline_visit)<=3){
+  #fit the linear model
+  linear_model_11OHA4_baseline <-  
+    lm(data=one_patient_11OHA4_baseline_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_11OHA4_baseline_visit$spline_model_11OHA4_baseline <-
+    as.numeric(predict(linear_model_11OHA4_baseline))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_11OHA4_baseline_visit$spline_model_11OHA4_baseline_first_derivative_fit <-
+    coef(linear_model_11OHA4_baseline)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_11OHA4_baseline_visit$spline_model_11OHA4_baseline_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_11OHA4_baseline_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_11OHA4_baseline))
+  
+  #calculate standardised residuals by rstandard(linear_model_11OHA4_baseline), but we just insert NA
+  one_patient_11OHA4_baseline_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_11OHA4 <-
+    sum((one_patient_11OHA4_baseline_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11OHA4_baseline_visit$observed_from_mean_squared_11OHA4 <-
+  (one_patient_11OHA4_baseline_visit$AVAL - 
+     mean(one_patient_11OHA4_baseline_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11OHA4 <- 
+  sum(one_patient_11OHA4_baseline_visit$observed_from_mean_squared_11OHA4)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11OHA4_baseline <- 
+  ifelse(total_sum_of_squares_11OHA4==0,
+  1,
+  1 - (sum_squared_regression_11OHA4/total_sum_of_squares_11OHA4)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11OHA4_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11OHA4",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_11OHA4_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11OHA4_baseline$y <- 
+  as.numeric(predict(linear_model_11OHA4_baseline, 
+          newdata=spline_model_fit_frame_11OHA4_baseline))
+
+#predict the first derivative
+spline_model_fit_frame_11OHA4_baseline$first_derivative_y <- 
+  coef(linear_model_11OHA4_baseline)[2]
+
+#predict the second derivative
+spline_model_fit_frame_11OHA4_baseline$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11OHA4_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11OHA4_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_11OHA4_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11OHA4_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11OHA4_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11OHA4_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11OHA4_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_11OHA4_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11OHA4_baseline <- 
+  sum(spline_model_fit_frame_11OHA4_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11OHA4_baseline <- 
+  log(area_under_curve_11OHA4_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11OHA4_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11OHA4",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_11OHA4_baseline_visit),
+  auc = area_under_curve_11OHA4_baseline,
+  ln_auc = ln_area_under_curve_11OHA4_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#do the same for the 3M visit
+if(nrow(one_patient_11OHA4_3M_visit)>3){
+spline_model_11OHA4_3M_visit <-  
+  smooth.spline(one_patient_11OHA4_3M_visit$reading_number,
+                one_patient_11OHA4_3M_visit$AVAL,
+                df=nrow(one_patient_11OHA4_3M_visit)) 
+one_patient_11OHA4_3M_visit$spline_model_11OHA4_fit <-
+    predict(spline_model_11OHA4_3M_visit)$y
+one_patient_11OHA4_3M_visit$spline_model_11OHA4_first_derivative_fit <-
+    predict(spline_model_11OHA4_3M_visit, deriv=1)$y
+one_patient_11OHA4_3M_visit$spline_model_11OHA4_second_derivative_fit <-
+    predict(spline_model_11OHA4_3M_visit, deriv=2)$y
+one_patient_11OHA4_3M_visit$spline_residual <- 
+  one_patient_11OHA4_3M_visit$AVAL - 
+  one_patient_11OHA4_3M_visit$spline_model_11OHA4_fit
+one_patient_11OHA4_3M_visit$standardised_residual <- 
+  (one_patient_11OHA4_3M_visit$AVAL - 
+     one_patient_11OHA4_3M_visit$spline_model_11OHA4_fit)/
+  (one_patient_11OHA4_3M_visit$spline_model_11OHA4_fit^0.5)
+sum_squared_regression_11OHA4 <- 
+  sum((one_patient_11OHA4_3M_visit$residual)^2)
+one_patient_11OHA4_3M_visit$observed_from_mean_squared_11OHA4 <-
+  (one_patient_11OHA4_3M_visit$AVAL - 
+     mean(one_patient_11OHA4_3M_visit$AVAL) ) ^ 2
+total_sum_of_squares_11OHA4 <- 
+  sum(one_patient_11OHA4_3M_visit$observed_from_mean_squared_11OHA4)
+coefficient_of_determination_11OHA4_3M_visit <- 
+  ifelse(total_sum_of_squares_11OHA4==0,
+  1,
+  1 - (sum_squared_regression_11OHA4/total_sum_of_squares_11OHA4)
+  )
+spline_model_fit_frame_11OHA4_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11OHA4",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_11OHA4_3M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_11OHA4_3M_visit$y <- 
+  predict(spline_model_11OHA4_3M_visit, 
+          spline_model_fit_frame_11OHA4_3M_visit$reading_number)$y
+spline_model_fit_frame_11OHA4_3M_visit$first_derivative_y <- 
+  predict(spline_model_11OHA4_3M_visit, 
+          spline_model_fit_frame_11OHA4_3M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_11OHA4_3M_visit$second_derivative_y <- 
+  predict(spline_model_11OHA4_3M_visit, 
+          spline_model_fit_frame_11OHA4_3M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_11OHA4_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11OHA4_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11OHA4_3M_visit$y)
+spline_model_fit_frame_11OHA4_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11OHA4_3M_visit$non_negative_y)
+spline_model_fit_frame_11OHA4_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11OHA4_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11OHA4_3M_visit$non_negative_y)/2
+area_under_curve_11OHA4_3M_visit <- 
+  sum(spline_model_fit_frame_11OHA4_3M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_11OHA4_3M_visit <- 
+  log(area_under_curve_11OHA4_3M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11OHA4_3M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11OHA4",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_11OHA4_3M_visit),
+  auc = area_under_curve_11OHA4_3M_visit,
+  ln_auc = ln_area_under_curve_11OHA4_3M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+
+
+}
+
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_11OHA4_3M_visit)>0 & nrow(one_patient_11OHA4_3M_visit)<=3){
+  #fit the linear model
+  linear_model_11OHA4_3M_visit <-  
+    lm(data=one_patient_11OHA4_3M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_11OHA4_3M_visit$spline_model_11OHA4_3M_visit <-
+    as.numeric(predict(linear_model_11OHA4_3M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_11OHA4_3M_visit$spline_model_11OHA4_3M_visit_first_derivative_fit <-
+    coef(linear_model_11OHA4_3M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_11OHA4_3M_visit$spline_model_11OHA4_3M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_11OHA4_3M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_11OHA4_3M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_11OHA4_3M_visit), but we just insert NA
+  one_patient_11OHA4_3M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_11OHA4 <-
+    sum((one_patient_11OHA4_3M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11OHA4_3M_visit$observed_from_mean_squared_11OHA4 <-
+  (one_patient_11OHA4_3M_visit$AVAL - 
+     mean(one_patient_11OHA4_3M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11OHA4 <- 
+  sum(one_patient_11OHA4_3M_visit$observed_from_mean_squared_11OHA4)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11OHA4_3M_visit <- 
+  ifelse(total_sum_of_squares_11OHA4==0,
+  1,
+  1 - (sum_squared_regression_11OHA4/total_sum_of_squares_11OHA4)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11OHA4_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11OHA4",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_11OHA4_3M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11OHA4_3M_visit$y <- 
+  as.numeric(predict(linear_model_11OHA4_3M_visit, 
+          newdata=spline_model_fit_frame_11OHA4_3M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_11OHA4_3M_visit$first_derivative_y <- 
+  coef(linear_model_11OHA4_3M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_11OHA4_3M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11OHA4_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11OHA4_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11OHA4_3M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11OHA4_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11OHA4_3M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11OHA4_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11OHA4_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11OHA4_3M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11OHA4_3M_visit <- 
+  sum(spline_model_fit_frame_11OHA4_3M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11OHA4_3M_visit <- 
+  log(area_under_curve_11OHA4_3M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11OHA4_3M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11OHA4",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_11OHA4_3M_visit),
+  auc = area_under_curve_11OHA4_3M_visit,
+  ln_auc = ln_area_under_curve_11OHA4_3M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+if(nrow(one_patient_11OHA4_6M_visit)>3){
+spline_model_11OHA4_6M_visit <-  
+  smooth.spline(one_patient_11OHA4_6M_visit$reading_number,
+                one_patient_11OHA4_6M_visit$AVAL,
+                df=nrow(one_patient_11OHA4_6M_visit)) 
+one_patient_11OHA4_6M_visit$spline_model_11OHA4_fit <-
+    predict(spline_model_11OHA4_6M_visit)$y
+one_patient_11OHA4_6M_visit$spline_model_11OHA4_first_derivative_fit <-
+    predict(spline_model_11OHA4_6M_visit, deriv=1)$y
+one_patient_11OHA4_6M_visit$spline_model_11OHA4_second_derivative_fit <-
+    predict(spline_model_11OHA4_6M_visit, deriv=2)$y
+one_patient_11OHA4_6M_visit$spline_residual <- 
+  one_patient_11OHA4_6M_visit$AVAL - 
+  one_patient_11OHA4_6M_visit$spline_model_11OHA4_fit
+one_patient_11OHA4_6M_visit$observed_from_mean_squared_11OHA4 <-
+  (one_patient_11OHA4_6M_visit$AVAL - 
+     mean(one_patient_11OHA4_6M_visit$AVAL) ) ^ 2
+total_sum_of_squares_11OHA4 <- 
+  sum(one_patient_11OHA4_6M_visit$observed_from_mean_squared_11OHA4)
+sum_squared_regression_11OHA4 <- 
+  sum((one_patient_11OHA4_6M_visit$spline_residual)^2)
+coefficient_of_determination_11OHA4_6M_visit <- 
+  ifelse(total_sum_of_squares_11OHA4==0,
+  1,
+  1 - (sum_squared_regression_11OHA4/total_sum_of_squares_11OHA4)
+  )
+spline_model_fit_frame_11OHA4_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11OHA4",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_11OHA4_6M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_11OHA4_6M_visit$y <- 
+  predict(spline_model_11OHA4_6M_visit, 
+          spline_model_fit_frame_11OHA4_6M_visit$reading_number)$y
+spline_model_fit_frame_11OHA4_6M_visit$first_derivative_y <- 
+  predict(spline_model_11OHA4_6M_visit, 
+          spline_model_fit_frame_11OHA4_6M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_11OHA4_6M_visit$second_derivative_y <- 
+  predict(spline_model_11OHA4_6M_visit, 
+          spline_model_fit_frame_11OHA4_6M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_11OHA4_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11OHA4_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11OHA4_6M_visit$y)
+spline_model_fit_frame_11OHA4_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11OHA4_6M_visit$non_negative_y)
+spline_model_fit_frame_11OHA4_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11OHA4_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11OHA4_6M_visit$non_negative_y)/2
+area_under_curve_11OHA4_6M_visit <- 
+  sum(spline_model_fit_frame_11OHA4_6M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_11OHA4_6M_visit <- 
+  log(area_under_curve_11OHA4_6M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11OHA4_6M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11OHA4",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_11OHA4_6M_visit),
+  auc = area_under_curve_11OHA4_6M_visit,
+  ln_auc = ln_area_under_curve_11OHA4_6M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_11OHA4_6M_visit)>0 & nrow(one_patient_11OHA4_6M_visit)<=3){
+  #fit the linear model
+  linear_model_11OHA4_6M_visit <-  
+    lm(data=one_patient_11OHA4_6M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_11OHA4_6M_visit$spline_model_11OHA4_6M_visit <-
+    as.numeric(predict(linear_model_11OHA4_6M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_11OHA4_6M_visit$spline_model_11OHA4_6M_visit_first_derivative_fit <-
+    coef(linear_model_11OHA4_6M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_11OHA4_6M_visit$spline_model_11OHA4_6M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_11OHA4_6M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_11OHA4_6M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_11OHA4_6M_visit), but we just insert NA
+  one_patient_11OHA4_6M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_11OHA4 <-
+    sum((one_patient_11OHA4_6M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11OHA4_6M_visit$observed_from_mean_squared_11OHA4 <-
+  (one_patient_11OHA4_6M_visit$AVAL - 
+     mean(one_patient_11OHA4_6M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11OHA4 <- 
+  sum(one_patient_11OHA4_6M_visit$observed_from_mean_squared_11OHA4)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11OHA4_6M_visit <- 
+  ifelse(total_sum_of_squares_11OHA4==0,
+  1,
+  1 - (sum_squared_regression_11OHA4/total_sum_of_squares_11OHA4)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11OHA4_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11OHA4",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_11OHA4_6M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11OHA4_6M_visit$y <- 
+  as.numeric(predict(linear_model_11OHA4_6M_visit, 
+          newdata=spline_model_fit_frame_11OHA4_6M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_11OHA4_6M_visit$first_derivative_y <- 
+  coef(linear_model_11OHA4_6M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_11OHA4_6M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11OHA4_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11OHA4_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11OHA4_6M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11OHA4_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11OHA4_6M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11OHA4_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11OHA4_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11OHA4_6M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11OHA4_6M_visit <- 
+  sum(spline_model_fit_frame_11OHA4_6M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11OHA4_6M_visit <- 
+  log(area_under_curve_11OHA4_6M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11OHA4_6M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11OHA4",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_11OHA4_6M_visit),
+  auc = area_under_curve_11OHA4_6M_visit,
+  ln_auc = ln_area_under_curve_11OHA4_6M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#############################################################
+##Sal_11KT##################################################
+#############################################################
+#fit the spline model to 11KT frmaes
+if(nrow(one_patient_11KT_baseline_visit)>3){
+  
+spline_model_11KT_baseline_visit <-  
+  smooth.spline(one_patient_11KT_baseline_visit$reading_number,
+                one_patient_11KT_baseline_visit$AVAL,
+                #take the number of rows of available points to assign the degrees of freedom
+                df=nrow(one_patient_11KT_baseline_visit)) 
+
+#fit the spline model to the original data points
+one_patient_11KT_baseline_visit$spline_model_11KT_fit <-
+    predict(spline_model_11KT_baseline_visit)$y
+
+#fit the first derivatives of the spline model to the original data points also
+one_patient_11KT_baseline_visit$spline_model_11KT_baseline_visit_first_derivative_fit <-
+    predict(spline_model_11KT_baseline_visit, deriv=1)$y
+
+#fit the second derivatives of the spline model to the original data points also
+one_patient_11KT_baseline_visit$spline_model_11KT_baseline_visit_second_derivative_fit <-
+    predict(spline_model_11KT_baseline_visit, deriv=2)$y
+
+#calculate residuals
+one_patient_11KT_baseline_visit$spline_residual <- 
+  one_patient_11KT_baseline_visit$AVAL - 
+  one_patient_11KT_baseline_visit$spline_model_11KT_fit
+
+#calculate standardised residuals
+one_patient_11KT_baseline_visit$standardised_residual <- 
+  (one_patient_11KT_baseline_visit$AVAL - 
+     one_patient_11KT_baseline_visit$spline_model_11KT_fit)/
+  (one_patient_11KT_baseline_visit$spline_model_11KT_fit^0.5)
+
+#calculate sum squared regression - the sum of the residuals squared
+sum_squared_regression_11KT <- 
+  sum((one_patient_11KT_baseline_visit$residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11KT_baseline_visit$observed_from_mean_squared_11KT <-
+  (one_patient_11KT_baseline_visit$AVAL - 
+     mean(one_patient_11KT_baseline_visit$AVAL) ) ^ 2
+
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11KT <- 
+  sum(one_patient_11KT_baseline_visit$observed_from_mean_squared_11KT)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11KT_baseline_visit <- 
+  ifelse(total_sum_of_squares_11KT==0,
+  1,
+  1 - (sum_squared_regression_11KT/total_sum_of_squares_11KT)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11KT_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11KT",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_11KT_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11KT_baseline$y <- 
+  predict(spline_model_11KT_baseline_visit, 
+          spline_model_fit_frame_11KT_baseline$reading_number)$y
+
+#predict the first derivative
+spline_model_fit_frame_11KT_baseline$first_derivative_y <- 
+  predict(spline_model_11KT_baseline_visit, 
+          spline_model_fit_frame_11KT_baseline$reading_number, 
+          deriv=1)$y
+
+#predict the second derivative
+spline_model_fit_frame_11KT_baseline$second_derivative_y <- 
+  predict(spline_model_11KT_baseline_visit, 
+          spline_model_fit_frame_11KT_baseline$reading_number, 
+          deriv=2)$y
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11KT_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11KT_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_11KT_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11KT_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11KT_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11KT_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11KT_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_11KT_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11KT_baseline <- 
+  sum(spline_model_fit_frame_11KT_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11KT_baseline <- 
+  log(area_under_curve_11KT_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11KT_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11KT",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_11KT_baseline_visit),
+  auc = area_under_curve_11KT_baseline,
+  ln_auc = ln_area_under_curve_11KT_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_11KT_baseline_visit)>0 & nrow(one_patient_11KT_baseline_visit)<=3){
+  #fit the linear model
+  linear_model_11KT_baseline <-  
+    lm(data=one_patient_11KT_baseline_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_11KT_baseline_visit$spline_model_11KT_baseline <-
+    as.numeric(predict(linear_model_11KT_baseline))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_11KT_baseline_visit$spline_model_11KT_baseline_first_derivative_fit <-
+    coef(linear_model_11KT_baseline)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_11KT_baseline_visit$spline_model_11KT_baseline_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_11KT_baseline_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_11KT_baseline))
+  
+  #calculate standardised residuals by rstandard(linear_model_11KT_baseline), but we just insert NA
+  one_patient_11KT_baseline_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_11KT <-
+    sum((one_patient_11KT_baseline_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11KT_baseline_visit$observed_from_mean_squared_11KT <-
+  (one_patient_11KT_baseline_visit$AVAL - 
+     mean(one_patient_11KT_baseline_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11KT <- 
+  sum(one_patient_11KT_baseline_visit$observed_from_mean_squared_11KT)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11KT_baseline <- 
+  ifelse(total_sum_of_squares_11KT==0,
+  1,
+  1 - (sum_squared_regression_11KT/total_sum_of_squares_11KT)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11KT_baseline <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11KT",
+             visit_number = 1,
+             degrees_of_freedom = nrow(one_patient_11KT_baseline_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11KT_baseline$y <- 
+  as.numeric(predict(linear_model_11KT_baseline, 
+          newdata=spline_model_fit_frame_11KT_baseline))
+
+#predict the first derivative
+spline_model_fit_frame_11KT_baseline$first_derivative_y <- 
+  coef(linear_model_11KT_baseline)[2]
+
+#predict the second derivative
+spline_model_fit_frame_11KT_baseline$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11KT_baseline$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11KT_baseline$y < 0, 
+         0, 
+         spline_model_fit_frame_11KT_baseline$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11KT_baseline$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11KT_baseline$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11KT_baseline$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11KT_baseline$lag_non_negative_y + 
+                         spline_model_fit_frame_11KT_baseline$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11KT_baseline <- 
+  sum(spline_model_fit_frame_11KT_baseline$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11KT_baseline <- 
+  log(area_under_curve_11KT_baseline)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11KT_baseline
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11KT",
+  visit=1,
+  degrees_of_freedom = nrow(one_patient_11KT_baseline_visit),
+  auc = area_under_curve_11KT_baseline,
+  ln_auc = ln_area_under_curve_11KT_baseline)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+#do the same for the 3M visit
+if(nrow(one_patient_11KT_3M_visit)>3){
+spline_model_11KT_3M_visit <-  
+  smooth.spline(one_patient_11KT_3M_visit$reading_number,
+                one_patient_11KT_3M_visit$AVAL,
+                df=nrow(one_patient_11KT_3M_visit)) 
+one_patient_11KT_3M_visit$spline_model_11KT_fit <-
+    predict(spline_model_11KT_3M_visit)$y
+one_patient_11KT_3M_visit$spline_model_11KT_first_derivative_fit <-
+    predict(spline_model_11KT_3M_visit, deriv=1)$y
+one_patient_11KT_3M_visit$spline_model_11KT_second_derivative_fit <-
+    predict(spline_model_11KT_3M_visit, deriv=2)$y
+one_patient_11KT_3M_visit$spline_residual <- 
+  one_patient_11KT_3M_visit$AVAL - 
+  one_patient_11KT_3M_visit$spline_model_11KT_fit
+one_patient_11KT_3M_visit$standardised_residual <- 
+  (one_patient_11KT_3M_visit$AVAL - 
+     one_patient_11KT_3M_visit$spline_model_11KT_fit)/
+  (one_patient_11KT_3M_visit$spline_model_11KT_fit^0.5)
+sum_squared_regression_11KT <- 
+  sum((one_patient_11KT_3M_visit$residual)^2)
+one_patient_11KT_3M_visit$observed_from_mean_squared_11KT <-
+  (one_patient_11KT_3M_visit$AVAL - 
+     mean(one_patient_11KT_3M_visit$AVAL) ) ^ 2
+total_sum_of_squares_11KT <- 
+  sum(one_patient_11KT_3M_visit$observed_from_mean_squared_11KT)
+coefficient_of_determination_11KT_3M_visit <- 
+  ifelse(total_sum_of_squares_11KT==0,
+  1,
+  1 - (sum_squared_regression_11KT/total_sum_of_squares_11KT)
+  )
+spline_model_fit_frame_11KT_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11KT",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_11KT_3M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_11KT_3M_visit$y <- 
+  predict(spline_model_11KT_3M_visit, 
+          spline_model_fit_frame_11KT_3M_visit$reading_number)$y
+spline_model_fit_frame_11KT_3M_visit$first_derivative_y <- 
+  predict(spline_model_11KT_3M_visit, 
+          spline_model_fit_frame_11KT_3M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_11KT_3M_visit$second_derivative_y <- 
+  predict(spline_model_11KT_3M_visit, 
+          spline_model_fit_frame_11KT_3M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_11KT_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11KT_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11KT_3M_visit$y)
+spline_model_fit_frame_11KT_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11KT_3M_visit$non_negative_y)
+spline_model_fit_frame_11KT_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11KT_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11KT_3M_visit$non_negative_y)/2
+area_under_curve_11KT_3M_visit <- 
+  sum(spline_model_fit_frame_11KT_3M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_11KT_3M_visit <- 
+  log(area_under_curve_11KT_3M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11KT_3M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11KT",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_11KT_3M_visit),
+  auc = area_under_curve_11KT_3M_visit,
+  ln_auc = ln_area_under_curve_11KT_3M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+
+
+}
+
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_11KT_3M_visit)>0 & nrow(one_patient_11KT_3M_visit)<=3){
+  #fit the linear model
+  linear_model_11KT_3M_visit <-  
+    lm(data=one_patient_11KT_3M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_11KT_3M_visit$spline_model_11KT_3M_visit <-
+    as.numeric(predict(linear_model_11KT_3M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_11KT_3M_visit$spline_model_11KT_3M_visit_first_derivative_fit <-
+    coef(linear_model_11KT_3M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_11KT_3M_visit$spline_model_11KT_3M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_11KT_3M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_11KT_3M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_11KT_3M_visit), but we just insert NA
+  one_patient_11KT_3M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_11KT <-
+    sum((one_patient_11KT_3M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11KT_3M_visit$observed_from_mean_squared_11KT <-
+  (one_patient_11KT_3M_visit$AVAL - 
+     mean(one_patient_11KT_3M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11KT <- 
+  sum(one_patient_11KT_3M_visit$observed_from_mean_squared_11KT)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11KT_3M_visit <- 
+  ifelse(total_sum_of_squares_11KT==0,
+  1,
+  1 - (sum_squared_regression_11KT/total_sum_of_squares_11KT)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11KT_3M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11KT",
+             visit_number = 3,
+             degrees_of_freedom = nrow(one_patient_11KT_3M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11KT_3M_visit$y <- 
+  as.numeric(predict(linear_model_11KT_3M_visit, 
+          newdata=spline_model_fit_frame_11KT_3M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_11KT_3M_visit$first_derivative_y <- 
+  coef(linear_model_11KT_3M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_11KT_3M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11KT_3M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11KT_3M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11KT_3M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11KT_3M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11KT_3M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11KT_3M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11KT_3M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11KT_3M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11KT_3M_visit <- 
+  sum(spline_model_fit_frame_11KT_3M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11KT_3M_visit <- 
+  log(area_under_curve_11KT_3M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11KT_3M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11KT",
+  visit=3,
+  degrees_of_freedom = nrow(one_patient_11KT_3M_visit),
+  auc = area_under_curve_11KT_3M_visit,
+  ln_auc = ln_area_under_curve_11KT_3M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+
+if(nrow(one_patient_11KT_6M_visit)>3){
+spline_model_11KT_6M_visit <-  
+  smooth.spline(one_patient_11KT_6M_visit$reading_number,
+                one_patient_11KT_6M_visit$AVAL,
+                df=nrow(one_patient_11KT_6M_visit)) 
+one_patient_11KT_6M_visit$spline_model_11KT_fit <-
+    predict(spline_model_11KT_6M_visit)$y
+one_patient_11KT_6M_visit$spline_model_11KT_first_derivative_fit <-
+    predict(spline_model_11KT_6M_visit, deriv=1)$y
+one_patient_11KT_6M_visit$spline_model_11KT_second_derivative_fit <-
+    predict(spline_model_11KT_6M_visit, deriv=2)$y
+one_patient_11KT_6M_visit$spline_residual <- 
+  one_patient_11KT_6M_visit$AVAL - 
+  one_patient_11KT_6M_visit$spline_model_11KT_fit
+one_patient_11KT_6M_visit$observed_from_mean_squared_11KT <-
+  (one_patient_11KT_6M_visit$AVAL - 
+     mean(one_patient_11KT_6M_visit$AVAL) ) ^ 2
+total_sum_of_squares_11KT <- 
+  sum(one_patient_11KT_6M_visit$observed_from_mean_squared_11KT)
+sum_squared_regression_11KT <- 
+  sum((one_patient_11KT_6M_visit$spline_residual)^2)
+coefficient_of_determination_11KT_6M_visit <- 
+  ifelse(total_sum_of_squares_11KT==0,
+  1,
+  1 - (sum_squared_regression_11KT/total_sum_of_squares_11KT)
+  )
+spline_model_fit_frame_11KT_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11KT",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_11KT_6M_visit),
+             reading_number = seq(1, 12, by=spline_knot_width))
+spline_model_fit_frame_11KT_6M_visit$y <- 
+  predict(spline_model_11KT_6M_visit, 
+          spline_model_fit_frame_11KT_6M_visit$reading_number)$y
+spline_model_fit_frame_11KT_6M_visit$first_derivative_y <- 
+  predict(spline_model_11KT_6M_visit, 
+          spline_model_fit_frame_11KT_6M_visit$reading_number, 
+          deriv=1)$y
+spline_model_fit_frame_11KT_6M_visit$second_derivative_y <- 
+  predict(spline_model_11KT_6M_visit, 
+          spline_model_fit_frame_11KT_6M_visit$reading_number, 
+          deriv=2)$y
+spline_model_fit_frame_11KT_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11KT_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11KT_6M_visit$y)
+spline_model_fit_frame_11KT_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11KT_6M_visit$non_negative_y)
+spline_model_fit_frame_11KT_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11KT_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11KT_6M_visit$non_negative_y)/2
+area_under_curve_11KT_6M_visit <- 
+  sum(spline_model_fit_frame_11KT_6M_visit$area_since_last_time_point, na.rm=T)
+ln_area_under_curve_11KT_6M_visit <- 
+  log(area_under_curve_11KT_6M_visit)
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11KT_6M_visit
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11KT",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_11KT_6M_visit),
+  auc = area_under_curve_11KT_6M_visit,
+  ln_auc = ln_area_under_curve_11KT_6M_visit)
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join
+  )
+}
+
+#if I have 3 or less points, we do all of the same but only fit a linear model through the points
+if(nrow(one_patient_11KT_6M_visit)>0 & nrow(one_patient_11KT_6M_visit)<=3){
+  #fit the linear model
+  linear_model_11KT_6M_visit <-  
+    lm(data=one_patient_11KT_6M_visit ,
+         formula = AVAL ~ reading_number) 
+  
+  #fit the linear model to the original data points, but continue to call it the same column name i.e. spline model
+  one_patient_11KT_6M_visit$spline_model_11KT_6M_visit <-
+    as.numeric(predict(linear_model_11KT_6M_visit))
+  
+  #extract the first derivative, which for a linear model is just the slope
+  one_patient_11KT_6M_visit$spline_model_11KT_6M_visit_first_derivative_fit <-
+    coef(linear_model_11KT_6M_visit)[2]
+  
+  #define the second derivative, which for a linear model is zero
+  one_patient_11KT_6M_visit$spline_model_11KT_6M_visit_second_derivative_fit <-
+    0
+
+  #calculate residuals
+  one_patient_11KT_6M_visit$spline_residual <- 
+    as.numeric(residuals(linear_model_11KT_6M_visit))
+  
+  #calculate standardised residuals by rstandard(linear_model_11KT_6M_visit), but we just insert NA
+  one_patient_11KT_6M_visit$standardised_residual <-
+    NA
+  
+  #calculate sum squared regression - the sum of the residuals squared
+  sum_squared_regression_11KT <-
+    sum((one_patient_11KT_6M_visit$spline_residual)^2)
+
+#calculate the distance the data is away from the mean, all squared
+one_patient_11KT_6M_visit$observed_from_mean_squared_11KT <-
+  (one_patient_11KT_6M_visit$AVAL - 
+     mean(one_patient_11KT_6M_visit$AVAL) ) ^ 2
+  
+#calculate total sum of squares - the sum of the distance the data is away from the mean, all squared
+total_sum_of_squares_11KT <- 
+  sum(one_patient_11KT_6M_visit$observed_from_mean_squared_11KT)
+
+#calculate the coefficient of determination, r squared, which works as long as it's not a perfect fitting model (total sum of squares will be zero), so we wrap in an ifelse statement to correct for that:
+coefficient_of_determination_11KT_6M_visit <- 
+  ifelse(total_sum_of_squares_11KT==0,
+  1,
+  1 - (sum_squared_regression_11KT/total_sum_of_squares_11KT)
+  )
+
+#create a new frame with the spline notch width we want to plot a smooth curve
+spline_model_fit_frame_11KT_6M_visit <- 
+  data.frame(patient = each_patient,
+             Sex = Sex_of_patient,
+             marker = "Sal_11KT",
+             visit_number = 4,
+             degrees_of_freedom = nrow(one_patient_11KT_6M_visit),
+             #note the sequence here is to 72, as they are 20 minute readings
+             reading_number = seq(1, 12, by=spline_knot_width))
+
+#predict the spline fit
+spline_model_fit_frame_11KT_6M_visit$y <- 
+  as.numeric(predict(linear_model_11KT_6M_visit, 
+          newdata=spline_model_fit_frame_11KT_6M_visit))
+
+#predict the first derivative
+spline_model_fit_frame_11KT_6M_visit$first_derivative_y <- 
+  coef(linear_model_11KT_6M_visit)[2]
+
+#predict the second derivative
+spline_model_fit_frame_11KT_6M_visit$second_derivative_y <- 
+  0
+
+#create a non_negative_y as the marker cannot be negative
+spline_model_fit_frame_11KT_6M_visit$non_negative_y <- 
+  ifelse(spline_model_fit_frame_11KT_6M_visit$y < 0, 
+         0, 
+         spline_model_fit_frame_11KT_6M_visit$y)
+
+#create a lag to find area under the curve manually. This will therefore change when we change our degrees of freedom
+spline_model_fit_frame_11KT_6M_visit$lag_non_negative_y <-
+  lag(spline_model_fit_frame_11KT_6M_visit$non_negative_y)
+
+#calculate the area since the last time point
+spline_model_fit_frame_11KT_6M_visit$area_since_last_time_point <-
+  spline_knot_width * (spline_model_fit_frame_11KT_6M_visit$lag_non_negative_y + 
+                         spline_model_fit_frame_11KT_6M_visit$non_negative_y)/2
+
+#calculate the area under the curve by summing it
+area_under_curve_11KT_6M_visit <- 
+  sum(spline_model_fit_frame_11KT_6M_visit$area_since_last_time_point, na.rm=T)
+
+#then calculate natural log of that
+ln_area_under_curve_11KT_6M_visit <- 
+  log(area_under_curve_11KT_6M_visit)
+
+#then put all our spline fits and spline curve frames into appropriate lists
+list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom[[length(list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom)+1]] <-
+  spline_model_fit_frame_11KT_6M_visit
+
+#put my area under curve into an appropriate frame
+salivary_auc_frame_flexible_degrees_of_freedom_long_to_join <-
+  data.frame(patient=each_patient,
+  marker="Sal_11KT",
+  visit=4,
+  degrees_of_freedom = nrow(one_patient_11KT_6M_visit),
+  auc = area_under_curve_11KT_6M_visit,
+  ln_auc = ln_area_under_curve_11KT_6M_visit)
+
+#join it in outside of the loop
+salivary_auc_frame_flexible_degrees_of_freedom_long <-
+  rbind(
+    salivary_auc_frame_flexible_degrees_of_freedom_long,
+    salivary_auc_frame_flexible_degrees_of_freedom_long_to_join)
+    
+}
+
+print("finished rendering degrees of freedom =")
+print("Flexible Degrees of freedom")
+print("for patient:")
+print(each_patient)
+#we no longer need to close the loop for degrees of freedom
+#}
+
+}
+```
+
+
+
+```{r}
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom <-
+  as.data.frame(do.call(rbind, list_of_salivary_spline_curve_frames_flexible_degrees_of_freedom))
+```
+
+
+```{r, create a visit name column for purposes of faceting}
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name <- 
+  ifelse(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_number==1,
+         "Visit 1",
+         NA)
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name <- 
+  ifelse(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_number==2,
+         "Visit 2",
+         giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name)
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name <- 
+  ifelse(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_number==3,
+         "Visit 3",
+         giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name)
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name <- 
+  ifelse(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_number==4,
+         "Visit 4",
+         giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_name)
+
+
+single_centre_saliva_data$visit <- 
+  ifelse(single_centre_saliva_data$VISIT=="Baseline",
+         1,
+         NA)
+single_centre_saliva_data$visit <- 
+  ifelse(single_centre_saliva_data$VISIT=="3M",
+         3,
+         single_centre_saliva_data$visit)
+single_centre_saliva_data$visit <- 
+  ifelse(single_centre_saliva_data$VISIT=="6M",
+         4,
+         single_centre_saliva_data$visit)
+
+
+#create patient paste visit
+single_centre_saliva_data$patient_paste_visit <-
+  paste0(single_centre_saliva_data$patient, "_", single_centre_saliva_data$visit)
+
+#create visit in the long file
+
+single_centre_saliva_data_long$visit <- 
+  ifelse(single_centre_saliva_data_long$VISIT=="Baseline",
+         1,
+         NA)
+single_centre_saliva_data_long$visit <- 
+  ifelse(single_centre_saliva_data_long$VISIT=="3M",
+         3,
+         single_centre_saliva_data_long$visit)
+single_centre_saliva_data_long$visit <- 
+  ifelse(single_centre_saliva_data_long$VISIT=="6M",
+         4,
+         single_centre_saliva_data_long$visit)
+
+single_centre_saliva_data_long$visit_number <- 
+  ifelse(single_centre_saliva_data_long$VISIT=="Baseline",
+         1,
+         NA)
+single_centre_saliva_data_long$visit_number <- 
+  ifelse(single_centre_saliva_data_long$VISIT=="3M",
+         3,
+         single_centre_saliva_data_long$visit_number)
+single_centre_saliva_data_long$visit_number <- 
+  ifelse(single_centre_saliva_data_long$VISIT=="6M",
+         4,
+         single_centre_saliva_data_long$visit_number)
+
+single_centre_saliva_data_long$visit_name <- 
+  ifelse(single_centre_saliva_data_long$visit_number==1,
+         "Visit 1",
+         NA)
+single_centre_saliva_data_long$visit_name <- 
+  ifelse(single_centre_saliva_data_long$visit_number==2,
+         "Visit 2",
+         single_centre_saliva_data_long$visit_name)
+single_centre_saliva_data_long$visit_name <- 
+  ifelse(single_centre_saliva_data_long$visit_number==3,
+         "Visit 3",
+         single_centre_saliva_data_long$visit_name)
+single_centre_saliva_data_long$visit_name <- 
+  ifelse(single_centre_saliva_data_long$visit_number==4,
+         "Visit 4",
+         single_centre_saliva_data_long$visit_name)
+
+salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name <- 
+  ifelse(salivary_auc_frame_flexible_degrees_of_freedom_long$visit==1,
+         "Visit 1",
+         NA)
+salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name <- 
+  ifelse(salivary_auc_frame_flexible_degrees_of_freedom_long$visit==2,
+         "Visit 2",
+         salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name)
+salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name <- 
+  ifelse(salivary_auc_frame_flexible_degrees_of_freedom_long$visit==3,
+         "Visit 3",
+         salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name)
+salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name <- 
+  ifelse(salivary_auc_frame_flexible_degrees_of_freedom_long$visit==4,
+         "Visit 4",
+         salivary_auc_frame_flexible_degrees_of_freedom_long$visit_name)
+
+#create a ln_value for later also
+single_centre_saliva_data_long$ln_AVAL <-
+  log(single_centre_saliva_data_long$AVAL)
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$ln_non_negative_y <-
+  log(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$non_negative_y)
+
+#create a id paste visit column in saliva data
+single_centre_saliva_data_long$id_paste_visit <-
+  paste0(single_centre_saliva_data_long$id,
+         "_",
+         single_centre_saliva_data_long$visit_number)
+
+#create a patient column in saliva data
+single_centre_saliva_data_long$patient <-
+  gsub(single_centre_saliva_data_long$id,
+         pattern="DIUR-005_",
+         replacement="")
+#create a patient paste visit column in saliva data
+single_centre_saliva_data_long$patient_paste_visit <-
+  paste0(single_centre_saliva_data_long$patient,
+         "_",
+         single_centre_saliva_data_long$visit_number)
+
+```
+
+
+```{r, create a wide salivary auc frame}
+salivary_auc_frame_flexible_degrees_of_freedom_wide <-
+  pivot_wider(data=salivary_auc_frame_flexible_degrees_of_freedom_long,
+              names_from = "marker",
+              values_from = c("auc", "ln_auc"))
+```
+
+
+
+```{r, create time_of_test_hours_past_first_measurement in the salivary frame both spline and raw data}
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$time_of_test_hours_past_first_measurement <-
+  giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$reading_number * 2 - 2
+
+single_centre_saliva_data_long$time_of_test_hours_past_first_measurement <-
+  single_centre_saliva_data_long$reading_number * 2 - 2
+```
+
+```{r, create a patient paste visit column in both saliva and serum to facilitate faceting}
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$patient <-
+  gsub(x=giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$patient,
+       pattern="DIUR-005_",
+       replacement="")
+
+#create an id column that is consistent also
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$id <- 
+  paste0("DIUR-005_", 
+         gsub(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$patient, pattern="-", replacement="_"))
+#then id_paste_visit
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$id_paste_visit <-
+  paste0(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$id,
+         "_",
+         giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_number)
+#then patient_paste_visit
+giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$patient_paste_visit <-
+  paste0(giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$patient,
+         "_",
+         giant_salivary_spline_fit_frame_flexible_degrees_of_freedom$visit_number)
+```
+
+```{r, rationalise frame names}
+salivary_auc_frame_long <- salivary_auc_frame_flexible_degrees_of_freedom_long
+salivary_auc_frame_wide <- salivary_auc_frame_flexible_degrees_of_freedom_wide
+```
+
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_11")
+```
+
+
+
+

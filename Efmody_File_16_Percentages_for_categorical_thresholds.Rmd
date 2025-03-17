@@ -1,0 +1,405 @@
+
+```{r, load packages}
+rm(list=ls())
+
+source("efmody_functions_folder/load_efmody_libraries_and_sources_function.R")
+
+load_efmody_libraries_and_sources_function()
+
+load_efmody_files_function(
+  previous_file_name="file_1",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "steroid_profiles",
+    "testosterone_measurements"))
+
+load_efmody_files_function(
+  previous_file_name="file_5",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list("normative_data"))
+
+load_efmody_files_function(
+  previous_file_name="file_6",
+  parent_directory="./efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "steroid_profiles_with_auc_17OHP", # this is a misnomer as also has auc androstenedione within it in wide format, just not the raw androstenedione values
+    "steroid_profiles_with_auc_Androstenedione"
+    ))
+
+load_efmody_files_function(
+  previous_file_name="file_11",
+  parent_directory="efmody_data_files_to_load/",
+  list_of_data_frames_to_load=list(
+    "single_centre_saliva_data",
+    "single_centre_saliva_data_long",
+    "salivary_auc_frame_wide",
+    "salivary_auc_frame_long"
+    ))
+
+```
+
+```{r, recreate id_paste_visit - should be able to get rid of this chunk as these are done beforehand when repeated}
+#steroid_profiles_with_auc_17OHP$id_paste_visit <-
+#  paste0(steroid_profiles_with_auc_17OHP$id, 
+#         "_",
+#         steroid_profiles_with_auc_17OHP$AVISITN)#
+#
+#steroid_profiles_with_auc_Androstenedione$id_paste_visit <-
+#  paste0(steroid_profiles_with_auc_Androstenedione$id, 
+#         "_",
+#         steroid_profiles_with_auc_Androstenedione$AVISITN)##
+
+#single_centre_saliva_data$id_paste_visit <-
+#  paste0(single_centre_saliva_data$id, 
+#         "_",
+#         single_centre_saliva_data$visit)#
+
+#single_centre_saliva_data_long$id_paste_visit <-
+#  paste0(single_centre_saliva_data_long$id, #
+#         "_",
+#         single_centre_saliva_data_long$visit_number)#
+
+#salivary_auc_frame_long$id_paste_visit <-
+#  paste0(salivary_auc_frame_long$patient, 
+#         "_",
+#         salivary_auc_frame_long$visit)#
+
+#salivary_auc_frame_wide$id_paste_visit <-
+#  paste0(salivary_auc_frame_wide$patient, 
+#         "_",
+#         salivary_auc_frame_wide$visit)
+#
+```
+
+
+```{r, join steroid_profiles frames with saliva data}
+#first step is to join serum and saliva data
+
+single_centre_saliva_data_to_join <-
+  single_centre_saliva_data
+single_centre_saliva_data_to_join$ARM <- NULL
+single_centre_saliva_data_to_join$SEX <- NULL
+single_centre_saliva_data_to_join$visit <- NULL
+
+#we just want 10 degrees of freedom
+salivary_auc_frame_wide_to_join <-
+  salivary_auc_frame_wide
+salivary_auc_frame_wide_to_join$id_paste_visit <-
+  paste0(salivary_auc_frame_wide_to_join$patient, "_", salivary_auc_frame_wide_to_join$visit)
+
+#then we just want the serum androstenedione readings
+steroid_profiles_with_auc_Androstenedione_to_join <-
+  steroid_profiles_with_auc_Androstenedione[,c(
+    "id_paste_visit",
+    "ATPTN",
+    "AVAL",
+    "ln_value_nM"
+  )]
+#rename the columns in our frames to tell us what is 17OHP and what is androstenedione
+names(steroid_profiles_with_auc_17OHP)[names(
+  steroid_profiles_with_auc_17OHP)=="AVAL"] <- 
+  "serum_17OHP"
+names(steroid_profiles_with_auc_17OHP)[names(
+  steroid_profiles_with_auc_17OHP)=="ln_value_nM"] <- 
+  "ln_serum_17OHP"
+
+names(steroid_profiles_with_auc_Androstenedione_to_join)[names(
+  steroid_profiles_with_auc_Androstenedione_to_join)=="AVAL"] <- 
+  "serum_Androstenedione"
+
+names(steroid_profiles_with_auc_Androstenedione_to_join)[names(
+  steroid_profiles_with_auc_Androstenedione_to_join)=="ln_value_nM"] <- 
+  "ln_serum_Androstenedione"
+```
+
+```{r, join steroid_profiles frames with saliva data}
+#first join our serum Androstenedione values
+steroid_profiles_with_auc_17OHP_and_androstenedione <-
+  left_join(steroid_profiles_with_auc_17OHP,
+            steroid_profiles_with_auc_Androstenedione_to_join,
+            by=c("id_paste_visit"="id_paste_visit",
+                 "ATPTN"="ATPTN"))
+
+#then join our saliva values
+steroid_profiles_with_auc_and_saliva_wide <- 
+  left_join(steroid_profiles_with_auc_17OHP_and_androstenedione,
+            single_centre_saliva_data_to_join,
+            by=c("id_paste_visit"="id_paste_visit",
+                 "ATPTN"="reading_number",
+                 "id"="id"))
+
+#then join our saliva auc
+steroid_profiles_with_auc_and_saliva_wide <-
+  left_join(steroid_profiles_with_auc_and_saliva_wide,
+            salivary_auc_frame_wide_to_join,
+            by="id_paste_visit")
+
+```
+
+```{r, join in testosterone}
+testosterone_measurements_to_join <- 
+  testosterone_measurements[,c(
+    "id_visit",
+    "value_ngdL_Testosterone",
+    "value_nM_Testosterone",
+    "ln_value_nM_Testosterone"
+  )]
+
+#we only have one measurement of testosterone in efmody patients at 7am which equates to an ATPTN of 9 - I just add this manually
+testosterone_measurements_to_join$ATPTN <- 9
+
+steroid_profiles_with_auc_and_saliva_wide_with_testosterone <-
+  left_join (steroid_profiles_with_auc_and_saliva_wide, 
+             testosterone_measurements_to_join, 
+             by = c("id_paste_visit"="id_visit",
+                          "ATPTN"="ATPTN"))
+
+steroid_profiles_with_auc_and_saliva_wide_with_testosterone_standard_therapy_arm <-
+  subset(steroid_profiles_with_auc_and_saliva_wide_with_testosterone, ARM=="Standard GC therapy")
+steroid_profiles_with_auc_and_saliva_wide_with_testosterone_chronocort_arm <-
+  subset(steroid_profiles_with_auc_and_saliva_wide_with_testosterone, ARM=="Chronocort")
+normative_data_testosterone <-
+  subset(normative_data, marker=="normative_Testosterone")
+
+sink("Summary_stats_of_testosterone_measurements.txt")
+
+print("This description shows the total number of visits with testosterone from patient data:")
+
+print("Overall patients:")
+descr(steroid_profiles_with_auc_and_saliva_wide_with_testosterone$value_nM_Testosterone)
+descr(steroid_profiles_with_auc_and_saliva_wide_with_testosterone$ln_value_nM_Testosterone)
+print("Standard therapy arm:")
+descr(steroid_profiles_with_auc_and_saliva_wide_with_testosterone_standard_therapy_arm$value_nM_Testosterone)
+descr(steroid_profiles_with_auc_and_saliva_wide_with_testosterone_standard_therapy_arm$ln_value_nM_Testosterone)
+print("Chronocort arm:")
+descr(steroid_profiles_with_auc_and_saliva_wide_with_testosterone_chronocort_arm$value_nM_Testosterone)
+descr(steroid_profiles_with_auc_and_saliva_wide_with_testosterone_chronocort_arm$ln_value_nM_Testosterone)
+print("Healthy participants:")
+descr(normative_data_testosterone$value_nM)
+descr(normative_data_testosterone$ln_value_nM)
+
+sink()
+
+unique(steroid_profiles_with_auc_and_saliva_wide_with_testosterone$ARM)
+```
+
+```{r, separate testosterone into sexes}
+steroid_profiles_with_auc_and_saliva_wide_with_testosterone_fema <- 
+  subset(steroid_profiles_with_auc_and_saliva_wide_with_testosterone, SEX=="F")
+steroid_profiles_with_auc_and_saliva_wide_with_testosterone_male <- 
+  subset(steroid_profiles_with_auc_and_saliva_wide_with_testosterone, SEX=="M")
+```
+
+
+```{r, proportions of patients below other thresholds dependent on 17OHP}
+proportion_androstenedione_below_for_threshold_17OHP_table <- 
+  data.frame()
+#define our thresholds and loop through options
+
+for(threshold_androstenedione in 
+    c(1, 2, 4, 4.2, 5, 6, 6.4, 7, 8, 10, 12)){
+#define threshold 17OHP
+for(threshold_17OHP in 
+    c(6, 7, 8, 10, 20, 30, 32, 34, 35, 36, 38, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200)){
+print(paste0("analysing threshold for androstenedione of : ", threshold_androstenedione))
+
+frame_above_17OHP_threshold_all <-
+  subset(
+    steroid_profiles_with_auc_and_saliva_wide_with_testosterone,
+    serum_17OHP > threshold_17OHP)
+
+frame_equal_below_17OHP_threshold_all <-
+  subset(
+    steroid_profiles_with_auc_and_saliva_wide_with_testosterone,
+    serum_17OHP <= threshold_17OHP)
+
+frame_above_17OHP_threshold_male <-
+  subset(frame_above_17OHP_threshold_all, 
+         SEX=="M")
+frame_above_17OHP_threshold_fema <-
+  subset(frame_above_17OHP_threshold_all, 
+         SEX=="F")
+
+frame_equal_below_17OHP_threshold_male <-
+  subset(frame_equal_below_17OHP_threshold_all, 
+         SEX=="M")
+frame_equal_below_17OHP_threshold_fema <-
+  subset(frame_equal_below_17OHP_threshold_all, 
+         SEX=="F")
+
+descr(frame_equal_below_17OHP_threshold_all$serum_Androstenedione)
+proportion_equal_below_threshold_androstenedione_given_below_17OHP_all <-
+  sum(frame_equal_below_17OHP_threshold_all$serum_Androstenedione < 
+        threshold_androstenedione) /
+  nrow(frame_equal_below_17OHP_threshold_all)
+
+proportion_equal_below_threshold_androstenedione_given_below_17OHP_male <-
+  sum(frame_equal_below_17OHP_threshold_male$serum_Androstenedione < 
+        threshold_androstenedione) /
+  nrow(frame_equal_below_17OHP_threshold_male)
+proportion_equal_below_threshold_androstenedione_given_below_17OHP_fema <-
+  sum(frame_equal_below_17OHP_threshold_fema$serum_Androstenedione < 
+        threshold_androstenedione) /
+  nrow(frame_equal_below_17OHP_threshold_fema)
+
+#prepare a table with proportions below various thresholds for androstenedione
+proportion_androstenedione_below_for_threshold_17OHP <-
+  data.frame(
+    threshold_17OHP=threshold_17OHP,
+    threshold_androstenedione=threshold_androstenedione,
+    proportion_equal_below_threshold_androstenedione_given_below_17OHP_all=
+      proportion_equal_below_threshold_androstenedione_given_below_17OHP_all,
+    proportion_equal_below_threshold_androstenedione_given_below_17OHP_male=
+      proportion_equal_below_threshold_androstenedione_given_below_17OHP_male,
+    proportion_equal_below_threshold_androstenedione_given_below_17OHP_fema=
+      proportion_equal_below_threshold_androstenedione_given_below_17OHP_fema
+  )
+proportion_androstenedione_below_for_threshold_17OHP_table <- 
+  rbind(proportion_androstenedione_below_for_threshold_17OHP_table, 
+     proportion_androstenedione_below_for_threshold_17OHP)
+
+}
+}
+
+write.csv(proportion_androstenedione_below_for_threshold_17OHP_table, 
+          "proportion_androstenedione_below_for_threshold_17OHP_table.csv", 
+          row.names=F)
+```
+
+
+```{r, proportions of patients below other thresholds dependent on Androstenedione}
+proportion_11oxos_below_for_threshold_androstenedione_table <- 
+  data.frame()
+#define our thresholds and loop through options
+
+for(threshold_androstenedione in c(4, 5, 6, 8, 10, 12)){
+#define threshold 17OHP
+#for(threshold_17OHP in c(10, 200)){
+#define threshold 17OHP
+for(threshold_Testosterone in c(15, 20, 25)){
+for(threshold_11KT in c(150, 200, 300)){
+for(threshold_11OHA4 in c(400, 600, 800)){
+
+
+frame_above_androstenedione_threshold_all <-
+  subset(
+    steroid_profiles_with_auc_and_saliva_wide_with_testosterone,
+    serum_Androstenedione > threshold_androstenedione)
+
+frame_equal_below_androstenedione_threshold_all <-
+  subset(
+    steroid_profiles_with_auc_and_saliva_wide_with_testosterone,
+    serum_Androstenedione <= threshold_androstenedione)
+
+frame_above_androstenedione_threshold_male <-
+  subset(frame_above_androstenedione_threshold_all, 
+         SEX=="M")
+frame_above_androstenedione_threshold_fema <-
+  subset(frame_above_androstenedione_threshold_all, 
+         SEX=="F")
+
+frame_equal_below_androstenedione_threshold_male <-
+  subset(frame_equal_below_androstenedione_threshold_all, 
+         SEX=="M")
+frame_equal_below_androstenedione_threshold_fema <-
+  subset(frame_equal_below_androstenedione_threshold_all, 
+         SEX=="F")
+
+#asssessing 11KT
+proportion_equal_below_threshold_11KT_given_below_androstenedione_all <-
+  sum(frame_equal_below_androstenedione_threshold_all$Sal_11KT < 
+        threshold_11KT, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_all$Sal_11KT))
+
+proportion_equal_below_threshold_11KT_given_below_androstenedione_male <-
+  sum(frame_equal_below_androstenedione_threshold_male$Sal_11KT < 
+        threshold_11KT, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_male$Sal_11KT))
+
+proportion_equal_below_threshold_11KT_given_below_androstenedione_fema <-
+  sum(frame_equal_below_androstenedione_threshold_fema$Sal_11KT < 
+        threshold_11KT, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_fema$Sal_11KT))
+
+#asssessing 11OHA4
+proportion_equal_below_threshold_11OHA4_given_below_androstenedione_all <-
+  sum(frame_equal_below_androstenedione_threshold_all$Sal_11OHA4 < 
+        threshold_11OHA4, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_all$Sal_11OHA4))
+
+proportion_equal_below_threshold_11OHA4_given_below_androstenedione_male <-
+  sum(frame_equal_below_androstenedione_threshold_male$Sal_11OHA4 < 
+        threshold_11OHA4, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_male$Sal_11OHA4))
+
+proportion_equal_below_threshold_11OHA4_given_below_androstenedione_fema <-
+  sum(frame_equal_below_androstenedione_threshold_fema$Sal_11OHA4 < 
+        threshold_11OHA4, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_fema$Sal_11OHA4))
+
+#asssessing Testosterone
+proportion_equal_below_threshold_Testosterone_given_below_androstenedione_all <-
+  sum(frame_equal_below_androstenedione_threshold_all$Sal_Testosterone < 
+        threshold_Testosterone, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_all$Sal_Testosterone))
+
+proportion_equal_below_threshold_Testosterone_given_below_androstenedione_male <-
+  sum(frame_equal_below_androstenedione_threshold_male$Sal_Testosterone < 
+        threshold_Testosterone, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_male$Sal_Testosterone))
+
+proportion_equal_below_threshold_Testosterone_given_below_androstenedione_fema <-
+  sum(frame_equal_below_androstenedione_threshold_fema$Sal_Testosterone < 
+        threshold_Testosterone, na.rm=T) /
+  sum(!is.na(frame_equal_below_androstenedione_threshold_fema$Sal_Testosterone))
+
+#prepare a table with proportions below various thresholds for androstenedione
+proportion_11KT_below_for_threshold_androstenedione <-
+  data.frame(
+    threshold_androstenedione=threshold_androstenedione,
+    threshold_11KT=threshold_11KT,
+    threshold_11OHA4=threshold_11OHA4,
+    threshold_Testosterone=threshold_Testosterone,
+    proportion_equal_below_threshold_11KT_given_below_androstenedione_all=
+      proportion_equal_below_threshold_11KT_given_below_androstenedione_all,
+    proportion_equal_below_threshold_11KT_given_below_androstenedione_male=
+      proportion_equal_below_threshold_11KT_given_below_androstenedione_male,
+    proportion_equal_below_threshold_11KT_given_below_androstenedione_fema=
+      proportion_equal_below_threshold_11KT_given_below_androstenedione_fema,
+    proportion_equal_below_threshold_11OHA4_given_below_androstenedione_all=
+      proportion_equal_below_threshold_11OHA4_given_below_androstenedione_all,
+    proportion_equal_below_threshold_11OHA4_given_below_androstenedione_male=
+      proportion_equal_below_threshold_11OHA4_given_below_androstenedione_male,
+    proportion_equal_below_threshold_11OHA4_given_below_androstenedione_fema=
+      proportion_equal_below_threshold_11OHA4_given_below_androstenedione_fema,
+    proportion_equal_below_threshold_Testosterone_given_below_androstenedione_all=
+      proportion_equal_below_threshold_Testosterone_given_below_androstenedione_all,
+    proportion_equal_below_threshold_Testosterone_given_below_androstenedione_male=
+      proportion_equal_below_threshold_Testosterone_given_below_androstenedione_male,
+    proportion_equal_below_threshold_Testosterone_given_below_androstenedione_fema=
+      proportion_equal_below_threshold_Testosterone_given_below_androstenedione_fema
+  )
+proportion_11oxos_below_for_threshold_androstenedione_table <- 
+  rbind(proportion_11oxos_below_for_threshold_androstenedione_table, 
+     proportion_11KT_below_for_threshold_androstenedione)
+
+}}}}
+
+write.csv(proportion_11oxos_below_for_threshold_androstenedione_table, 
+          "proportion_11oxos_below_for_threshold_androstenedione_table.csv", 
+          row.names=F)
+```
+
+```{r, end of file so save all the listed dataframes into the parent directory}
+rm(single_centre_saliva_data)
+rm(single_centre_saliva_data_long)
+rm(salivary_auc_frame_wide)
+rm(salivary_auc_frame_long)
+rm(steroid_profiles_with_auc_Androstenedione)
+rm(steroid_profiles_with_auc_17OHP)
+rm(normative_data)
+
+save_efmody_files_function(
+  parent_directory="./efmody_data_files_to_load/",
+  parent_file="file_16")
+```
